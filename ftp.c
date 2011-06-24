@@ -55,8 +55,7 @@ static struct sigaction oa[2];
    sigaction(sig,NULL,&sa); \
    oa[n] = sa; \
    sa.sa_handler = doalarm; \
-   sa.sa_flags &= ~SA_RESTART; \
-   sa.sa_flags |= SA_RESETHAND; \
+   sa.sa_flags &= ~(SA_RESTART|SA_RESETHAND); \
    sigaction(sig,&sa,NULL); \
 } while(0)
 
@@ -107,8 +106,7 @@ static void setalarm(int aval)
     if(sa.sa_handler != doalarm)
       oalarm = sa.sa_handler;
     sa.sa_handler = doalarm;
-    sa.sa_flags &= ~SA_RESTART;
-    sa.sa_flags |= SA_RESETHAND;
+    sa.sa_flags &= ~(SA_RESTART|SA_RESETHAND);
     sigaction(SIGALRM,&sa,NULL);
     canto = 1;
     timedout = 0;
@@ -188,8 +186,8 @@ static int tn_read(struct tvt *tvt, char *buf, int len)
 	  return ERR_OK;
     }
     do {
+	errno = 0;
 	do {
-	    errno = 0;
 	    FD_ZERO(&fds);
 	    FD_SET(tvt->fd, &fds);
 	    res = select(tvt->fd + 1, &fds, NULL, NULL, NULL);
@@ -386,22 +384,29 @@ char ftp_endport(struct ftpsite *site)
 	close(site->dport);
 	site->dport = -1;
     }
+    site->dfd.state = TS_NONE;
     return ret;
 }
 
 static char pwbuf[256] = {0};
+static char was_err = ERR_OK;
 
 char ftp_cmd2(struct ftpsite *site, const char *cmd, const char *arg)
 {
     char *s;
     short rc, rcls;
 
+    if(!cmd && was_err == ERR_CMD) {
+	was_err = ERR_OK;
+	return ERR_CMD;
+    }
+    was_err = ERR_OK;
     if(!cmd || strcmp(cmd, "QUIT"))
       setalarm(site->to.cmd);
     if(cmd) {
 	tn_writeln2(&site->tvt, cmd, arg);
     }
-    if(site->dfd.fd >= 0)
+    if(site->dfd.fd >= 0 && site->dfd.state != TS_OPEN)
       ftp_endport(site);
     for(;;) {
 	s = tn_readln(&site->tvt, NULL, 0);
@@ -464,7 +469,7 @@ char ftp_cmd2(struct ftpsite *site, const char *cmd, const char *arg)
 		else
 		  return clralarm()?ERR_TO:ERR_CMD;
 	    } else */
-	      return clralarm()?ERR_TO:rcls>=FTP_EAGAIN?ERR_CMD:ERR_OK;
+	      return (was_err = clralarm()?ERR_TO:rcls>=FTP_EAGAIN?ERR_CMD:ERR_OK);
 	}
     }
 }
@@ -512,38 +517,83 @@ void ftp_closeconn(struct ftpsite *site)
     clralarm();
 }
 
-int ftp_port(struct ftpsite *site)
+int ftp_passive(struct ftpsite *site, char try_port)
 {
-    struct hostent *he;
-    struct utsname un;
+    char *s, *ns;
+    unsigned char *a, *p;
+    int i;
+    int opt;
+
+    ftp_endport(site);
+    if(ftp_cmd(site, "PASV") != ERR_OK || atoi(site->lastresp) != 227 ||
+       !(s = strchr(site->lastresp, '(')))
+      return try_port ? ftp_port(site, 0) : ERR_CONNECT;
+    a = (unsigned char *)&site->dfd.addr.in.sin_addr;
+    for(i=0;i<4;i++) {
+	while(isspace(*++s)); /* not allowed by standard, but why not? */
+	a[i] = strtol(s, &ns, 10);
+	while(isspace(*ns)) /* not allowed by standard, but why not? */
+	  ns++;
+	if(ns == s || *ns != ',')
+	  return ERR_CMD;
+	s = ns;
+    }
+    while(isspace(*++s)); /* not allowed by standard, but why not? */
+    p = (unsigned char *)&site->dfd.addr.in.sin_port;
+    *p = strtol(s, &ns, 10);
+    while(isspace(*ns)) /* not allowed by standard, but why not? */
+      ns++;
+    if(ns == s || *ns != ',')
+      return ERR_CMD;
+    s = ns;
+    while(isspace(*++s)); /* not allowed by standard, but why not? */
+    *++p = strtol(s, &ns, 10);
+    while(isspace(*ns)) /* not allowed by standard, but why not? */
+      ns++;
+    if(ns == s || *ns != ')')
+      return ERR_CMD;
+    site->dfd.fd = socket(PF_INET, SOCK_STREAM, 0);
+    if(site->dfd.fd < 0)
+      return ERR_OS;
+    site->dfd.state = TS_OPEN;
+    /*    site->dfd.addr.in.sin_len = sizeof(tvt->addr.in); */
+    site->dfd.addr.in.sin_family = AF_INET;
+    opt = -1;
+    setsockopt(site->dfd.fd, SOL_SOCKET, SO_REUSEADDR, (void *)&opt, sizeof(opt));
+    /* This should really go in chkdport, with a connect timeout */
+    /* but some servers like a connect immediately after PASV */
+    /* and won't respond to retrieval commands until the connect */
+    if(connect(site->dfd.fd, (struct sockaddr *)&site->dfd.addr.sa,
+	       sizeof(site->dfd.addr.sa))) {
+	close(site->dfd.fd);
+	site->dfd.fd = -1;
+	site->dfd.state = TS_NONE;
+	return ERR_CONNECT;
+    } 
+    return ERR_OK;
+}
+
+int ftp_port(struct ftpsite *site, char try_passive)
+{
     char buf[24];
-    char **p;
     unsigned char *a, *pt;
     int opt;
     size_t lopt;
-    union sa addr; 
+    union sa addr;
 
     ftp_endport(site);
-    if(uname(&un) < 0)
-      return ERR_OS;
-    he = gethostbyname(un.nodename);
-    if(!he || he->h_addrtype != AF_INET) {
-	fputs("Can't find local inet addr",stderr);
-	return ERR_NOHOST;
-    }
     site->dport = socket(PF_INET, SOCK_STREAM, 0);
     if(site->dport < 0)
       return ERR_OS;
     opt = -1;
     setsockopt(site->dport, SOL_SOCKET, SO_REUSEADDR, (void *)&opt, sizeof(opt));
+    lopt = sizeof(addr);
+    /* ARRRGGGGGHHH!  Damn Sun and the horse they rode in on! */
+    if(getsockname(site->tvt.fd, &addr.sa, (void *)&lopt) < 0)
+	return ERR_OS;
     addr.in.sin_port = 0; /* random port */
-    for(p=he->h_addr_list;*p;p++) {
-	memcpy(&addr.in.sin_addr.s_addr, *p, he->h_length);
-	if(!bind(site->dport, &addr.sa, sizeof(addr)))
-	  break;
-    }
-    if(!*p || listen(site->dport, 1) < 0)
-      return ERR_OS;
+    if(bind(site->dport, &addr.sa, sizeof(addr)) || listen(site->dport, 1) < 0)
+	return ERR_OS;
     lopt = sizeof(addr);
     /* ARRRGGGGGHHH!  Damn Sun and the horse they rode in on! */
     if(getsockname(site->dport, &addr.sa, (void *)&lopt) < 0) {
@@ -557,7 +607,7 @@ int ftp_port(struct ftpsite *site)
     if(ftp_cmd2(site, "PORT ", buf) != ERR_OK) {
 	close(site->dport);
 	site->dport = -1;
-	return ERR_OS;
+	return try_passive ? ftp_passive(site, 0) : ERR_CMD;
     }
     return ERR_OK;
 }
@@ -570,17 +620,26 @@ static int chkdport(struct ftpsite *site)
     if(site->dport < 0 && site->dfd.fd < 0)
       return ERR_CONNECT;
     setalarm(site->to.xfer);
-    if(site->dfd.fd < 0) {
+    if(site->dfd.fd < 0 || site->dfd.state != TS_CONNECT) {
 	site->dfd.bufp = site->dfd.buflen = 0;
-	/* see above comment about Sun */
-	site->dfd.fd = accept(site->dport, &sa.sa, (void *)&salen);
-	if(site->dfd.fd < 0) {
-	    clralarm();
-	    return ERR_CONNECT;
+	if(site->dfd.state != TS_OPEN) {
+	   /* see above comment about Sun */
+	    site->dfd.fd = accept(site->dport, &sa.sa, (void *)&salen);
+	    if(site->dfd.fd < 0) {
+		clralarm();
+		return ERR_CONNECT;
+	    }
+	    close(site->dport);
+	    site->dport = -1;
+	} else {
+	    /* This is in ftp_passive() because this is too late */
+/*	    if(connect(site->dfd.fd, (struct sockaddr *)&site->dfd.addr.sa,
+			sizeof(site->dfd.addr.sa))) {
+		clralarm();
+		return ERR_CONNECT;
+	    } */
 	}
 	site->dfd.state = TS_CONNECT;
-	close(site->dport);
-	site->dport = -1;
 /*	fcntl(site->dfd.fd, F_SETFL, fcntl(site->dfd.fd, F_GETFL) | O_NONBLOCK); */
     }
     return ERR_OK;
@@ -619,7 +678,7 @@ int ftp_crossconnect(struct ftpsite *site1, struct ftpsite *site2)
     int i;
     char buf[24];
 
-    if(ftp_cmd(site1, "PASV") != ERR_OK || atoi(site1->lastresp) != 2 ||
+    if(ftp_cmd(site1, "PASV") != ERR_OK || atoi(site1->lastresp) != 227 ||
        !(s = strchr(site1->lastresp, '('))) {
 	struct ftpsite *tmp;
 

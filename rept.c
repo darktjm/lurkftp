@@ -42,8 +42,10 @@ static char *addtot(char *buf, const char *type, unsigned long bytes,
 		bytes /= 1024;
 		if(bytes < 10000)
 		  sz = "MB";
-		else
+		else {
+		  bytes /= 1024;
 		  sz = "GB";
+		}
 	    }
 	}
 	buf += sprintf(buf,"%s%lu %s in %lu files",got1?", ":"",bytes,sz,files);
@@ -489,7 +491,7 @@ void namesubst(register char *buf, const char *pat, const struct ftpsite *src,
 		tm.tm_mday = item->day;
 		tm.tm_mon = item->month-1;
 		tm.tm_year = item->year-1900;
-		tm.tm_isdst = 0;
+		tm.tm_isdst = -1;
 		/* 64 is enough for anyone, I'm sure */
 		memcpy(buf+64,pat,t-pat);
 		buf[64+t-pat] = 0;
@@ -523,13 +525,13 @@ void namesubst(register char *buf, const char *pat, const struct ftpsite *src,
 	else if(bnest && *pat == ':') {
 	    modval = 0;
 	    while(*++pat) {
-		if(*pat == '%')
+		if(*pat == '%') {
 		  if(*++pat == '[')
 		    modval++;
-		else if(*pat == ']')
+		} else if(*pat == ']') {
 		  if(!modval--)
 		    break;
-		else if(!modval && *pat == ':')
+		} else if(!modval && *pat == ':')
 		  break;
 	    }
 	    if(*pat == ']')
@@ -602,9 +604,10 @@ void pr_rept(struct fname **mirarray, int malen, int nadd, int ndel,
 	    if(S_ISREG((*o)->mode)) {
 		tot.subf++;
 		tot.subb += (*o)->size;
-	    } else if(S_ISDIR((*o)->mode)) /* && !filtdir */
-		  tot.subd++;
-	    else
+	    } else if(S_ISDIR((*o)->mode)) /* && !filtdir */ {
+		if((*o)->flags & FNF_PROCESS)
+		    tot.subd++;
+	    } else
 	      tot.subs++;
 	    didrept = prname(didrept, fmt,((*o)->flags&FNF_MOVE)?'<':'-',*o,
 			     header, site, other);

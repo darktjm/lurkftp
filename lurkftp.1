@@ -319,7 +319,8 @@ character
 .RE
 
 .SS Generic Directory Specification
-All FTP sites may be specified as follows: [ [
+All FTP sites may be specified as follows (the "!" means "try passive
+connections first"): [ [
 .I <user>
 ] [
 .BI , <acct>
@@ -332,6 +333,8 @@ All FTP sites may be specified as follows: [ [
 ]
 [
 .BI , <port>
+] [
+.B !
 ] [
 .BI : <dir>
 ].  The
@@ -416,7 +419,8 @@ dependency groups.
 .TP
 .BI \-z\  <prog>
 Program to filter all ls files through when writing (default:
-.BR gzip ).  Setting this to an empty string disables output filtering.
+.BR gzip ).
+Setting this to an empty string disables output filtering.
 .PP
 .TP
 .BI \-Z\  <prog>
@@ -424,7 +428,8 @@ Program to filter ls files or remote listings through if the first character
 of the file in question is non-printable as per ANSI
 .IR isprint (3).
 (default:
-.BR gunzip ).  Setting this to an empty string resets to the default.
+.BR gunzip ).
+Setting this to an empty string resets to the default.
 .PP
 .TP
 .BI \-v\  <mask>
@@ -561,6 +566,14 @@ Set generic source directory.
 .TP
 .BI \-O\  <dirspec>
 Set generic destination directory.
+.PP
+.TP
+.B \-V
+Set the default connection mode for sites to passive.  When this option is
+in effect, the "!" specifier in hosts still means "passive first"; the only
+way to force "port first" is to not have this option in effect.  This may be
+useful if lurkftp is run from behind a firewall or proxying gateway.
+.PP
 .TP
 .BI \-p\  <password>
 Set default FTP login password (default:
@@ -569,7 +582,8 @@ Set default FTP login password (default:
 .TP
 .BI \-b\  <base>
 Change default name (formerly just base name) for placeholder files (default:
-.BR .chkls.%s%d.gz ).  Outside %-substitution is performed on the name.
+.BR .chkls.%s%d.gz ).
+Outside %-substitution is performed on the name.
 .TP
 .BI \-L\  <rname>
 Use file
@@ -616,6 +630,17 @@ useful if specific directories are to be filtered out, as the recursion
 routine will match the name of the directory to be entered (with a trailing
 .RB ` / ')
 against the exclude filter before recursing.
+.PP
+.TP
+.B \-S
+Allow symbolic links to outside file/directory locations.  This allows a
+single level of indirection using either an absolute link (always assumed to
+point outside of tree) or a symbolic link beginning with enough "../"
+strings to get out of the tree.  If a directory pointed to by such a link is
+to be updated, it will be updated at the link's target.  The same is true if
+append mode is enabled.  Links will also be blindly moved in move mode
+(which will probably not be the desired effect).  Otherwise the link will
+be deleted and replaced by the new object.
 .PP
 .SS Mirroring Options
 .TP

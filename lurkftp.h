@@ -32,7 +32,7 @@
  * after all when I discovered that the reason for this mismatch was a bug
  * in ncftp (used by my old mirror script), not lurkftp.
  */
-#define TIMECORRECT 0
+#define TIMECORRECT 1
 
 /* default report line format */
 /* #define DEFFMT "%T %{%Y %m %d} %12b %r%f%[L? -> %L]" */
@@ -69,7 +69,11 @@ struct ftpdir {
     const char **dirs;
     const char *dir0;
     unsigned short ndirs;
-    unsigned short type;
+    unsigned char type;
+#ifdef TIMECORRECT
+    signed char timecorrect: 2;
+#endif
+    unsigned char linkout: 1;
 };
 
 struct op {
@@ -81,6 +85,8 @@ struct op {
     const char *errln;
     const char *xfilter, *ifilter;
     regex_t xregex, iregex;
+    regex_t *xre_array, *ire_array;
+    int xnre, inre;
     unsigned int
       srcf_local: 1,
       dstf_remt: 1,
@@ -95,7 +101,9 @@ struct op {
       trymir: 1,
       mirmodes: 1,
       mirstmp: 1,
-      mirappend: 1;
+      mirappend: 1,
+      defpassive : 1,
+      deflinkout : 1;
 };
 
 struct totals {
@@ -141,6 +149,7 @@ void parseargs(int argc, char ** argv);
  */
 #define REPTCMP  0x7654320 /* "fdpnlst" */
 
+#define DIFFCMP  0x7265430 /* "fpnlsdt" */
 /*
  * sort for move detection:
  * type, name (w/o dir), [linkname], date, size, dir: ascending
@@ -161,9 +170,10 @@ void parseargs(int argc, char ** argv);
 #define PROCCMP 0xfea8dcb /* "PNLFDST" */
 
 extern unsigned sorder;
+extern signed char tc1, tc2;
 unsigned parsesort(const char *str);
 int gencmp(const void *__a, const void *__b);
-#define sort(a,n,o) do {sorder = o; qsort(a,n,sizeof(*a),gencmp);}while(0)
+#define sort(a,n,o) do {sorder = o; tc1=tc2=0; qsort(a,n,sizeof(*a),gencmp);}while(0)
 unsigned strip_from_sorder(unsigned sorder, unsigned char what);
 struct fname **diff_dir(struct ftpdir *src, struct ftpdir *dst,
 			int *arraylen, int *nadd, int *ndel,
@@ -180,19 +190,23 @@ void pr_rept(struct fname **mirarray, int malen, int nadd, int ndel,
 	     char resort);
 
 /* misc.c */
+#define allocmem(l) allocstr(l,&dir->names)
+#define copyname(s) copystr(s,strlen(s),&dir->names)
+#define copynamel(s,l) copystr(s,l,&dir->names)
 void freedir(struct dirmem *dir);
 char *allocstr(int len, struct strmem **sp);
 char *copystr(const char *str, int len, struct strmem **sp);
 struct fname *lastname(struct fnamemem **pd);
 void freelastname(struct fnamemem **pd);
 int toarray(struct dirmem *dir);
+time_t gmt_mktime(struct tm *tm);
 
-int readtree(struct dirmem *dir, const char *wd);
+int readtree(struct dirmem *dir, const char *wd, char linkout);
 typedef int (*read_func)(void *data, char *buf, int buflen, char line);
 int readf(FILE *f, char *buf, int len, char line);
 int parsels(struct dirmem *dir, read_func rf, void *data,
 	    const char *cd, const char *root);
-void filterdir(struct dirmem *dir, const regex_t *filter, int cut);
+void filterdir(struct dirmem *dir, const regex_t *filter, int nfilter, int cut);
 
 int readlsfile(struct dirmem *dir, FILE *f, const char *root);
 int writelsfile(const char *name, struct dirmem *dir, int mustproc);
@@ -202,12 +216,19 @@ size_t nosig_fwrite(void *ptr, size_t size, size_t nmemb, FILE *stream);
 
 /* routines in ftpsupt.c */
 int getfile(FILE *f, struct ftpsite *site, const char *rf);
-int filetm(struct ftpsite *site, const char *name, struct tm *tm);
-
-void logout(struct ftpsite *site);
-
 const char *ftperr(int err);
-int readftplsf(struct dirmem *dir, struct ftpsite *site,
-	       const char *dirs, const char *rname);
+int readftplsf(struct dirmem *dir, struct ftpsite *site, const char *rname);
 int readftpdir(struct dirmem *dir, struct ftpsite *site, const char **dirs,
-	       int ndirs, int recurse, const regex_t *xfilt);
+	       int ndirs, int recurse, const regex_t *xfilt, int nxfilt);
+
+/* break_lp */
+const char *break_lp(const char *txt, regex_t *re0, regex_t **_re_array, int *_nre);
+int match_lp(const char *txt, const regex_t *re_array, int nre);
+void free_lp(regex_t **_re_array, int *_nre);
+
+/* glibc2.1 support */
+#if defined(SEMCTL_NEEDS_ARG) && defined(__GNU_LIBRARY__) && \
+    defined(__GLIBC__) && defined(__GLIBC_MINOR__) && \
+     ((__GLIBC__ == 2 && __GLIBC_MINOR__ > 0) || __GLIBC__ > 2)
+#undef SEMCTL_NEEDS_ARG
+#endif

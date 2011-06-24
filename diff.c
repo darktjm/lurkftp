@@ -16,6 +16,9 @@
 
 /* sort order; qsort() doesn't take parms, so this is static */
 unsigned sorder;
+#if TIMECORRECT
+signed char tc1, tc2; /* time correction flags */
+#endif
 
 unsigned strip_from_sorder(unsigned sorder, unsigned char what)
 {
@@ -63,6 +66,19 @@ static int dircmp(const struct fname *a, const struct fname *b)
  * 6 = s = size (if file)
  * 7 = t = time (HH:MM) (if file)
  * |8 = caps = reverse sort order.
+ *
+ * Note that there is no way to sort on the full name (p+f), so you might get:
+ *   /x/a
+ *   /x/y
+ *   /x/z
+ *   /x/a/a
+ *   /x/a/b
+ * rather than:
+ *   /x/a
+ *   /x/a/a
+ *   /x/a/b
+ *   /x/y
+ *   /x/z
  */
 unsigned parsesort(const char *str)
 {
@@ -153,6 +169,57 @@ int gencmp(const void *__a, const void *__b)
 	    break;
 	  case 2: /* d = date */
 	    if(!md && S_ISREG(a->mode)) {
+#if TIMECORRECT
+		if(a->day != b->day &&
+		   ((tc1 && a->hr < 0) || (tc2 && b->hr < 0))) {
+		    /* prefer matches over mismatches */
+		    signed char tca = a->hr < 0 ? tc1 : 0, tcb = b->hr < 0 ? tc2 : 0;
+
+		    if(debug & DB_OTHER)
+			fprintf(stderr, "matching %d-%02d-%02d(%d) vs. %d-%02d-%02d(%d)\n",
+				a->year, a->month, a->day, tca, b->year, b->month, b->day, tcb);
+		    /* fast check; no date math needed */
+		    if((tca < 0 || tcb > 0) && a->year == b->year &&
+		       a->month == b->month && a->day == b->day + 1)
+			break;
+		    else if((tca > 0 || tcb < 0) && a->year == b->year &&
+			    a->month == b->month && a->day == b->day - 1)
+			break;
+		    else if(tca > 0 && tcb < 0 && a->year == b->year &&
+			    a->month == b->month && b->day == a->day + 2)
+			break;
+		    else if(tca < 0 && tcb > 0 && a->year == b->year &&
+			    a->month == b->month && a->day == b->day + 2)
+			break;
+		    /* slow check; need to know end of month */
+		    if((tca > 0 && a->day >= 28 && b->day <= 2) ||
+		       (tca < 0 && b->day >= 28 && a->day <= 2)) {
+			struct tm tm1, tm2;
+			time_t t1, t2;
+
+			memset(&tm1, 0, sizeof(tm1));
+			memset(&tm2, 0, sizeof(tm2));
+			tm1.tm_year = a->year - 1900;
+			tm1.tm_mon = a->month - 1;
+			tm1.tm_mday = a->day;
+			tm2.tm_year = b->year - 1900;
+			tm2.tm_mon = b->month - 1;
+			tm2.tm_mday = b->day;
+			t1 = mktime(&tm1);
+			t2 = mktime(&tm2);
+			if((tca < 0 || tcb > 0) && t1 == t2 + 24*60*60)
+			    break;
+			else if((tca > 0 || tcb < 0) && t1 == t2 - 24*60*60)
+			    break;
+			else if(tca > 0 && tcb < 0 && t2 == t1 + 2*24*60*60)
+			    break;
+			else if(tca < 0 && tcb > 0 && t1 == t2 + 2*24*60*60)
+			    break;
+		    }
+		    if(debug & DB_OTHER)
+			fprintf(stderr, "mismatch\n");
+		}
+#endif
 		if(a->year != b->year)
 		  return a->year - b->year;
 		if(a->month != b->month)
@@ -257,7 +324,11 @@ struct fname **diff_dir(struct ftpdir *src, struct ftpdir *dst,
     /* gets incremented & reported. */
     if(debug & DB_TRACE)
       fputs("Finding differences in listings\n",stderr);
-    sorder = detmove?MVCHK:REPTCMP;
+    sorder = detmove?MVCHK:DIFFCMP;
+#if TIMECORRECT
+    tc1 = src->timecorrect;
+    tc2 = dst->timecorrect;
+#endif
     for(o=dst->dirm.array,n=src->dirm.array,i=dst->dirm.count,j=src->dirm.count;j && i;) {
 	k = gencmp(n,o);
 	if(debug & DB_OTHER)
@@ -357,5 +428,118 @@ struct fname **diff_dir(struct ftpdir *src, struct ftpdir *dst,
     }
     *nadd = ap - mirarray;
     *ndel = (mirarray+*arraylen)-dp;
+    /* don't delete any dirs still needed */
+    sort(src->dirm.array, src->dirm.count, PROCCMP);
+    sort(dp, *ndel, PROCCMP);
+    for(o = src->dirm.array, j = src->dirm.count, n = dp, i = 0;
+	j && i < *ndel; i++, n++) {
+	if(S_ISDIR((*n)->mode)) {
+	    int nrlen = strlen((*n)->root), orlen = strlen((*o)->root),
+	        len = strlen((*n)->dir) - nrlen, nlen = strlen((*n)->name);
+	    int l, h, m;
+
+	    if((*o)->root[orlen-1] != '/')
+		orlen++;
+	    if((*n)->root[nrlen-1] != '/') {
+		nrlen++;
+		len--;
+	    }
+	    if(debug & DB_OTHER)
+		fprintf(stderr,"diff: considering undelete of dir %s%s\n",
+			(*n)->dir+nrlen, (*n)->name);
+#if 0 /* this might work if p+f sort worked properly */
+	    k = strncmp((*o)->dir + orlen, (*n)->dir + nrlen, len);
+	    if(!k)
+		k = strncmp((*o)->dir + orlen + len, (*n)->name, nlen);
+	    if(!k)
+		k = (*o)->dir[len + nlen + orlen] != '/';
+	    if(k < 0) /* nothing in this dir */
+		continue;
+	    if(!k) { /* lucky, match! */
+		/* I'd like to advance o/j here, but then roots are skipped */
+		(*n)->flags |= FNF_DONE;
+		(*n)->flags &= ~FNF_PROCESS;
+		if(debug & DB_OTHER)
+		    fprintf(stderr,"diff: undeleting dir %s%s\n",
+			    (*n)->dir, (*n)->name);
+		continue;
+	    }
+	    if(j == 1) /* can't possibly match */
+		continue;
+	    /* search downwards for match or pass */
+	    l = 1;
+	    h = 1;
+	    /* first find a candidate chunk, expanding chunk size while moving */
+	    while(1) {
+		k = strncmp(o[h]->dir + orlen, (*n)->dir + nrlen, len);
+		if(!k)
+		    k = strncmp(o[h]->dir + orlen + len, (*n)->name, nlen);
+		if(!k)
+		    k = o[h]->dir[len + nlen + orlen] != '/';
+		if(k <= 0)
+		    break;
+		l = h + 1;
+		h *= 2;
+		if(l >= j)
+		    break;
+		if(h > j - 1)
+		    h = j - 1;
+	    }
+	    if(k > 0) /* can't find match, and won't find any more period */
+		break;
+	    /* now do binary search within chunk to find a match */
+	    m = h;
+	    while(k && h >= l) {
+		m = (l + h)/2;
+		k = strncmp(o[m]->dir + orlen, (*n)->dir + nrlen, len);
+		if(!k)
+		    k = strncmp(o[m]->dir + orlen + len, (*n)->name, nlen);
+		if(!k)
+		    k = o[m]->dir[len + nlen + orlen] != '/';
+		if(k < 0)
+		    h = m - 1;
+		else
+		    l = m + 1;
+	    }
+	    /* skip forward so future searches start better */
+	    j -= m;
+	    o += m;
+	    if(!k) {
+		/* I'd like to advance o/j here, but then roots are skipped */
+		(*n)->flags |= FNF_DONE;
+		(*n)->flags &= ~FNF_PROCESS;
+		if(debug & DB_OTHER)
+		    fprintf(stderr,"diff: undeleting dir %s%s\n",
+			    (*n)->dir, (*n)->name);
+	    }
+#else /* above code doesn't catch "root" directories */
+	    /* just do a binary search every time */
+	    l = 0;
+	    h = j - 1;
+	    k = 1;
+	    while(l <= h) {
+		m = (l + h)/2;
+		k = strncmp(o[m]->dir + orlen, (*n)->dir + nrlen, len);
+		if(!k)
+		    k = strncmp(o[m]->dir + orlen + len, (*n)->name, nlen);
+		if(!k)
+		    k = o[m]->dir[len + nlen + orlen] != '/';
+		if(!k)
+		    break;
+		if(k < 0)
+		    h = m - 1;
+		else
+		    l = m + 1;
+	    }
+	    if(!k) {
+		(*n)->flags |= FNF_DONE;
+		(*n)->flags &= ~FNF_PROCESS;
+		if(debug & DB_OTHER)
+		    fprintf(stderr,"diff: undeleting dir %s%s\n",
+			    (*n)->dir, (*n)->name);
+	    }
+#endif
+	}
+    }
     return mirarray;
 }

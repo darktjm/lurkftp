@@ -101,6 +101,34 @@ Changelog
 	Added -N (no continue if failure) option
 	Added -k (ACCT login) option
 
+ v1.00 ("healthy bloated hog") - accumulated bug fixes, mostly mirror mode
+        Append mode tries harder
+	Default retrytime, cmd timeouts increased
+	Alarm handlers don't disable after first timeout
+	Packet underflow reads don't corrupt file any more
+	PORT command uses outgoing IP instead of 1st host alias
+	Continue directory listing recursively if mid-stream abort on ls-lR
+	Made local file I/O more signal-immune
+	Retry files on spurious signal
+	Support "local ls-lR file" listing mode
+	Clear out host port, etc. when changing hostname
+	Fixed GMT tm -> time_t conversion
+	Actually uses MDTM command to stamp files instead of listing
+	Stamp mode actually works now
+	Kill zombie uncompressors
+	Made remote uncompressors work
+	Parse non-curdir-relative listings
+	Support longer regex's (GNU libc has pathetically low limit)
+	Minor manpage cleanup
+	Allow -F's containing fewer options
+	Support "GB" on 64-bit systems as well
+	Support PASV connections
+	Support symlinks into other dirs (-S)
+	Don't delete dirs only to recreate
+	Support "remote ls-lR file" listing mode
+	Support "ls -lR ." in ls-lR files
+	No longer TO's on error return from retrieve, thus getting stuck
+
 ***************************************************************
 
 KNOWN BUGS
@@ -111,6 +139,7 @@ KNOWN BUGS
 * Probably plenty of nasty hidden bugs
 + Some fixed-sized buffers may overflow
 + Few options are really range-checked
++ Can't mirror a single file
 - Groups & user names aren't mirrored
 - Sockets aren't mirrored
 - Exact time isn't used for comparison (only accurate to what ls gives)
@@ -118,7 +147,7 @@ KNOWN BUGS
 Ok, to give some credit here:
 
 I finally took a detailed look at mirror.pl's documentation, and decided to
-add the following to lurkftp:
+add the following to lurkftp (although I haven't yet):
 - "ignore" filter
 - option to ignore dates &/or ignore size &/or look for "newer" files
 - option for "skip mirror if too many changes"

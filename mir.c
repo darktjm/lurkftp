@@ -90,7 +90,6 @@ void mir_chmod(struct ftpdir *dst, struct fname **ap, int nadd)
 void mir_del(struct ftpdir *dst, struct fname **dp, int ndel, char filtdir)
 {
     const char *s;
-    char *d;
     struct fname **n;
     size_t j;
 
@@ -99,9 +98,8 @@ void mir_del(struct ftpdir *dst, struct fname **dp, int ndel, char filtdir)
     /* sort for depth-first deletion */
     sort((const struct fname **)dp,ndel,PROCCMP);
     for(;ndel;ndel--,dp++) {
-	if((*dp)->flags & FNF_MOVE) /* ignore moves */
-	  continue;
-	if((*dp)->flags & FNF_APPEND)
+	/* only process true deletions */
+	if((*dp)->flags & (FNF_MOVE | FNF_APPEND | FNF_DONE))
 	  continue;
 	if(dst->pipe) {
 	    namesubst(scratch, dst->pipe, NULL, dst, *dp, '-');
@@ -145,17 +143,6 @@ void mir_del(struct ftpdir *dst, struct fname **dp, int ndel, char filtdir)
 	    (*dp)->flags |= FNF_DONE;
 	    if(debug & DB_TRACE)
 	      fprintf(stderr,"Deleted %s\n",scratch);
-	    /* need to add following to pipe, too */
-	    if(filtdir) { /* if dirs not explicit, remove empty directories */
-		d = strrchr(scratch,'/');
-		if(!d[1]) /* trailing / */
-		  while(*--d != '/' && d > scratch);
-		while(d) {
-		    *d = 0;
-		    if(rmdir(scratch))
-		      break;
-		}
-	    }
 	}
     }
 }
@@ -324,9 +311,8 @@ void mir_transfer(struct fname **ap, int nadd, struct ftpdir *src,
 	/* already constructed */
 	if(!S_ISLNK((*ap)->mode)) {
 	    time(&ut.actime);
-	    if(ftp_filetm(&src->site, s, &tm))
-	      /* tm has UTC stamp of file */
-	      ut.modtime = mktime(&tm);
+	    if(!ftp_filetm(&src->site, s, &tm))
+		ut.modtime = gmt_mktime(&tm);
 	    else {
 		tm.tm_sec = 0;
 		tm.tm_min = (*ap)->min;
@@ -339,13 +325,13 @@ void mir_transfer(struct fname **ap, int nadd, struct ftpdir *src,
 		tm.tm_mon = (*ap)->month-1;
 		tm.tm_year = (*ap)->year-1900;
 		tm.tm_isdst = 0;
-		ut.modtime = mktime(&tm) - timezone;
+		ut.modtime = gmt_mktime(&tm);
 	    }
 	    if(ut.modtime == -1)
 	      ut.modtime = ut.actime;
 	    /* if just stamping, stamp & continue */
 	    /* FIXME:  this should work with pipes, too */
-	    if(mirstmp && !dst->pipe && access(scratch,F_OK)) {
+	    if(mirstmp && !dst->pipe && !access(scratch,F_OK)) {
 		if(mirmodes)
 		  chmod(scratch,(*ap)->mode&~S_IFMT);
 		utime(scratch,&ut);

@@ -61,6 +61,7 @@ struct ftpsite {
     unsigned short port;
     struct to to;
     const char *lastresp;
+    char passive; /* flag: try passive connection before port */
     /* private info */
     struct tvt tvt; /* control connection */
     struct tvt dfd; /* data conection */
@@ -73,7 +74,9 @@ char ftp_cmd2(struct ftpsite *site, const char *cmd, const char *arg);
 char ftp_endport(struct ftpsite *site);
 int ftp_openconn(struct ftpsite *site);
 void ftp_closeconn(struct ftpsite *site);
-int ftp_port(struct ftpsite *site);
+int ftp_port(struct ftpsite *site, char try_passive);
+int ftp_passive(struct ftpsite *site, char try_port);
+#define ftp_dopen(site) ((site)->passive?ftp_passive(site,1):ftp_port(site,1))
 int ftp_read(struct ftpsite *site, char *buf, int len, char line);
 int ftp_write(struct ftpsite *site, const char *buf, int len);
 void ftp_init(const char *progname);

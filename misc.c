@@ -16,6 +16,8 @@
 #include <dirent.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <time.h>
+#include <ctype.h>
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <pwd.h>
@@ -31,10 +33,6 @@ static char buf[4096];
 static char name[4096];
 
 /* memory functions */
-
-#define copyname(s) copystr(s,strlen(s),&dir->names)
-#define copynamel(s,l) copystr(s,l,&dir->names)
-
 char *allocstr(int len, struct strmem **sp)
 {
     struct strmem *sm;
@@ -231,7 +229,6 @@ FILE *autouncompress(read_func f, void *fd, pid_t *pp, char *fc)
 	      break;
 	}
 	r = pclose(pf);
-	fprintf(stderr, "Done writing to uncompressor %s\n", uncrpg?uncrpg:DEF_UNCRPG);
 	if(i < 0 || r < 0) {
 	    perror("uncompress");
 	    exit(1);
@@ -420,10 +417,13 @@ int parsels(struct dirmem *dir, read_func rf, void *data, const char *cd,
 	s = name;
 	if(*curdir == '/' && buf[0] != '/')
 	  *s++ = '/';
-	if(buf[i] == ':' && sscanf(buf,"%[^ \t:]:",s) == 1) {
-	    i = strlen(name);
-	    if(name[i-1] != '/')
-	      name[i++] = '/';
+	/* note: can't handle names w/ spaces or colons */
+	/* if(buf[i] == ':' && sscanf(buf,"%[^ \t:]:",s) == 1) {
+	    i = strlen(name); */
+	if(buf[i] == ':') {
+	    for(s = buf; isspace(*s); s++, i--);
+	    if(s[i-1] != '/')
+		s[i++] = '/';
 	    /* mark the previous dir as read */
 	    if(dir->count) {
 		struct fnamemem *fm2;
@@ -450,7 +450,24 @@ int parsels(struct dirmem *dir, read_func rf, void *data, const char *cd,
 		    }
 		}
 	    }
-	    curdir = copynamel(name,i);
+	    if(cd && *s != '/' && *cd == '/') { /* bug in some FTP servers: no '/' on dirs */
+		if(*s == '.' && s[1] == '/' && *cd) { /* ls-lR */
+		    int l = strlen(cd);
+		    if(l && cd[l - 1] != '/')
+			l++;
+		    curdir = allocmem(i+l-2);
+		    memcpy(curdir,cd,l);
+		    curdir[l-1] = '/';
+		    memcpy(curdir + l, s + 2, i - 2);
+		    curdir[l+i-2] = 0;
+		} else {
+		    curdir = allocmem(i+1);
+		    memcpy(curdir + 1, s, i);
+		    *curdir = '/';
+		    curdir[i+1] = 0;
+		}
+	    } else
+		curdir = copynamel(s,i);
 	    if(!curdir) {
 		reap(pid);
 		return ERR_MEM;
@@ -596,18 +613,19 @@ int parsels(struct dirmem *dir, read_func rf, void *data, const char *cd,
 
 /* descend local directory tree for file list */
 /* Can't use ftw because ftw's brain-dead */
-int readtree(struct dirmem *dir, const char *_wd)
+int readtree(struct dirmem *dir, const char *_wd, char linkout)
 {
     struct stat st;
-    struct fname *f, *dirf;
+    struct fname *f = NULL, *dirf; /* NULL to shut gcc up */
     struct fnamemem *fm = NULL;
     struct tm *tm;
     char *root;
     int wdlen;
     unsigned long i;
     DIR *d;
-    struct dirent *de;
+    struct dirent *de = NULL; /* NULL to shut gcc up */
     char *wd;
+    char linkf = 0;
 
     if(!*_wd)
       _wd = "./";
@@ -638,18 +656,20 @@ int readtree(struct dirmem *dir, const char *_wd)
 	if(!d)
 	    fprintf(stderr,"Can't scan directory %s\n",wd);
 	else {
-	    while((de = readdir(d))) {
-		/* skip "." and ".." */
-		if(de->d_name[0] == '.' && (!de->d_name[1] ||
-					    (de->d_name[1] == '.' &&
-					     !de->d_name[2])))
-		  continue;
-		strcpy(name+wdlen,de->d_name);
-		if(lstat(name,&st)) {
-		    fprintf(stderr,"Can't stat %s\n",name);
-		    continue;
+	    while(linkf || (de = readdir(d))) {
+		if(!linkf) {
+		    /* skip "." and ".." */
+		    if(de->d_name[0] == '.' && (!de->d_name[1] ||
+						(de->d_name[1] == '.' &&
+						 !de->d_name[2])))
+			continue;
+		    strcpy(name+wdlen,de->d_name);
+		    if(lstat(name,&st)) {
+			fprintf(stderr,"Can't stat %s\n",name);
+			continue;
+		    }
 		}
-		if(!(f=allocname(&dir->files)))
+		if(!linkf && !(f=allocname(&dir->files)))
 		  return ERR_MEM;
 		f->mode = st.st_mode;
 		if(S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode))
@@ -662,7 +682,7 @@ int readtree(struct dirmem *dir, const char *_wd)
 		f->day = tm->tm_mday;
 		f->hr = tm->tm_hour;
 		f->min = tm->tm_min;
-		if(!(f->name = copyname(de->d_name)))
+		if(!linkf && !(f->name = copyname(de->d_name)))
 		  return ERR_MEM;
 		f->root = root;
 		f->dir = wd;
@@ -675,9 +695,44 @@ int readtree(struct dirmem *dir, const char *_wd)
 			return ERR_OS;
 		    }
 		    buf[len] = 0;
+		    /* allow links outside of tree */
+		    if(!linkf && linkout) {
+			char doit = buf[0] == '/'; /* absolute links */
+			if(buf[0] == '.') {
+			    /* see if relative link points outside of root */
+			    int dp = 0;
+			    char *bp;
+
+			    while(buf[dp] == '.' && buf[dp+1] == '.' &&
+				  buf[dp+2] == '/')
+				dp += 3;
+			    bp = wd + strlen(wd) - 1;
+			    while( bp > wd && dp > 0) {
+				while(--bp > wd && *bp != '/');
+				dp -= 3;
+			    }
+			    doit = bp == wd || (bp - wd + 1) < strlen(root);
+			}
+			if(doit) {
+			    if(buf[0] == '/')
+				strcpy(name, buf);
+			    else
+				strcpy(name+wdlen, buf);
+			    /* skip if link invalid */
+			    doit = !lstat(name,&st);
+			    /* restore original name */
+			    strcpy(name, wd);
+			    if(doit) {
+				/* only allow *1* level of indirection */
+				linkf = 1;
+				continue;
+			    }
+			}
+		    }
 		    if(!(f->lnk = copyname(buf)))
-		      return ERR_MEM;
+			return ERR_MEM;
 		}
+		linkf = 0;
 		if(debug & DB_OTHER)
 		  fprintf(stderr,"Created: %02d:%02d %02d/%02d/%04d (%ld/%o) %s%s%s%s\n",
 			  f->hr,f->min,f->month,f->day,f->year,
@@ -747,4 +802,37 @@ size_t nosig_fwrite(void *ptr, size_t size, size_t nmemb, FILE *stream)
     nwrite += n;
     ntowrite -= n;
     return nwrite / size;
+}
+
+/* Just removing timezone doesn't work w/ DST sometimes */
+/* why the #$%$% doesn't the standard C library have this? */
+time_t gmt_mktime(struct tm *tm)
+{
+    time_t ret = mktime(tm) - timezone, gt;
+    struct tm gtm;
+    static int toldyou = 0;
+    int i;
+
+    for(i = 0; i < 20; i++) {
+	gtm = *gmtime(&ret);
+	if(gtm.tm_year == tm->tm_year &&
+	   gtm.tm_mon == tm->tm_mon &&
+	   gtm.tm_mday == tm->tm_mday &&
+	   gtm.tm_hour == tm->tm_hour &&
+	   gtm.tm_min == tm->tm_min &&
+	   gtm.tm_sec == tm->tm_sec)
+	    break;
+	gt = mktime(&gtm) - timezone;
+	if(!toldyou) {
+	    if(debug & DB_OTHER)
+		fprintf(stderr,"Adjusting time by %g\n", difftime(gt, ret));
+	    toldyou = 1;
+	}
+	ret -= gt - ret;
+    }
+    if(i > 20 && toldyou >= 0) {
+	fputs("Urk!  Can't slew time to GMT!\n", stderr);
+	toldyou = -1;
+    }
+    return ret;
 }

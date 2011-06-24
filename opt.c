@@ -153,7 +153,7 @@ static const char *readfile(void *data, int getopt)
     if(*p)
       while(isspace(*++p));
     if(debug & DB_OPT)
-      fprintf(stderr,"optfile: '%.*s' -> '%s'\n",p-of->bptr,of->bptr,d);
+      fprintf(stderr,"optfile: '%.*s' -> '%s'\n",(int)(p-of->bptr),of->bptr,d);
     of->bptr = p;
     return d;
 }
@@ -276,13 +276,12 @@ static void endarg(void)
     parm = atoi(s); \
 } while(0)
 
-#define setfilt(reg, str) do {\
+#define setfilt(filt) do {\
     if(debug & DB_OPT) \
-      fprintf(stderr,"filt: %s\n", str); \
-    if((i=regcomp(&reg, str, REG_EXTENDED|REG_NOSUB))) { \
-	str = NULL; \
-	regerror(i, &reg, scratch, 4096); \
-	fprintf(stderr,"Can't compile %s: %s\n",str,scratch); \
+	fprintf(stderr,"filt: %s\n", defop.filt##filter); \
+    if((s=break_lp(defop.filt##filter, &defop.filt##regex, &defop.filt##re_array, &defop.filt##nre))) { \
+	fprintf(stderr,"Can't compile %s: %s\n",defop.filt##filter,s); \
+	defop.filt##filter = NULL; \
 	help(1); \
     } \
 } while(0)
@@ -311,7 +310,7 @@ static void endarg(void)
     if(!*defop.filt##filter) \
       defop.filt##filter = NULL; \
     else \
-      setfilt(defop.filt##regex, defop.filt##filter); \
+      setfilt(filt); \
 } while(0)
 
 /* minor parse helper functions for literal args */
@@ -322,6 +321,7 @@ static const char *parsesite(const char *_s, struct ftpsite *site)
 {
     const char *s = _s;
     char *d, *sp = NULL, *ap = NULL, *pp = NULL, *dp = NULL, *port = NULL;
+    char pasv = 0;
 
     for(d = scratch; *s; s++, d++) {
 	if(*s == '\\' && s[1]) {
@@ -331,6 +331,11 @@ static const char *parsesite(const char *_s, struct ftpsite *site)
 	if(!sp && *s == '@') {
 	    *d = 0;
 	    sp = d+1;
+	    continue;
+	}
+	if(!sp && !pp && !pasv && *s == '!') {
+	    *d = 0;
+	    pasv = 1;
 	    continue;
 	}
 	if(!sp && !pp) {
@@ -372,6 +377,7 @@ static const char *parsesite(const char *_s, struct ftpsite *site)
 	site->acct = ap?copyparm(ap):NULL;
 	site->pass = pp?copyparm(pp):anonpasswd?copyparm(anonpasswd):NULL;
 	site->port = port?atoi(port):0; /* FIXME: getportbyname() */
+	site->passive = pasv || defop.defpassive;
     } else {
 	if(*scratch)
 	  site->host = copyparm(scratch);
@@ -379,6 +385,7 @@ static const char *parsesite(const char *_s, struct ftpsite *site)
 	site->acct = NULL;
 	site->pass = anonpasswd?copyparm(anonpasswd):NULL;
 	site->port = ap?atoi(ap):0; /* FIXME: getportbyname() */
+	site->passive = pasv || defop.defpassive;
 	dp = pp;
     }
     return dp;
@@ -475,12 +482,17 @@ static void parseopts(const char *(*getarg)(void *, int), void *data)
     struct stat st;
     int i;
     char tog;
+    static int subnest = 0;
+    int infirst = !subnest;
 
-    defop.srcls.site.to = defop.dstls.site.to = defto;
+    subnest = 1;
+    if(infirst) {
+	defop.srcls.site.to = defop.dstls.site.to = defto;
 #ifdef DEF_CRPG
-    crpg = malloc(strlen(DEF_CRPG)+1);
-    strcpy(crpg, DEF_CRPG);
+	crpg = malloc(strlen(DEF_CRPG)+1);
+	strcpy(crpg, DEF_CRPG);
 #endif
+    }
 
     while((a = (*getarg)(data,1))) {
 	if(*a == '-' || *a == '+') {
@@ -538,6 +550,7 @@ static void parseopts(const char *(*getarg)(void *, int), void *data)
 		    defop.dstls.dirs = &defop.dstls.dir0;
 		    defop.dstls.ndirs = 1;
 		    defop.dstls.type = ST_LDIR;
+		    defop.dstls.linkout = defop.deflinkout;
 		    defop.trymir = 1;
 		    defop.dstf_remt = 0;
 		    break;
@@ -596,7 +609,7 @@ static void parseopts(const char *(*getarg)(void *, int), void *data)
 		  case 'i': /* filter */
 		    optstr(defop.ifilter);
 		    if(defop.ifilter)
-		      setfilt(defop.iregex, defop.ifilter);
+		      setfilt(i);
 		    break;
 		  case 'I': /* filter (from file) */
 		    filtfile(i);
@@ -604,7 +617,7 @@ static void parseopts(const char *(*getarg)(void *, int), void *data)
 		  case 'x': /* filter */
 		    optstr(defop.xfilter);
 		    if(defop.xfilter)
-		      setfilt(defop.xregex, defop.xfilter);
+		      setfilt(x);
 		    break;
 		  case 'X': /* filter (from file) */
 		    filtfile(x);
@@ -614,6 +627,11 @@ static void parseopts(const char *(*getarg)(void *, int), void *data)
 		    break;
 		  case 's': /* don't filter out all specials */
 		    defop.filtspec = tog^1;
+		    break;
+		  case 'S':
+		    defop.deflinkout = tog;
+		  case 'V':
+		    defop.defpassive = tog;
 		    break;
 		  case 'T': /* timeouts */
 		    if(!(s = (*getarg)(data,0)))
@@ -706,6 +724,7 @@ static void parseopts(const char *(*getarg)(void *, int), void *data)
 		  case 'h': /* help */
 		    help(0);
 		  default:
+		    /* Unused: ajkuwy CGHJKQSWY */
 		    help(1);
 		}
 	    }
@@ -713,6 +732,9 @@ static void parseopts(const char *(*getarg)(void *, int), void *data)
 	  litarg(a);
     }
     endarg();
-    if(!ops)
-      help(0);
+    if(infirst) {
+	subnest = 0;
+	if(!ops)
+	    help(0);
+    }
 }

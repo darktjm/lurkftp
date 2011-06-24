@@ -23,16 +23,13 @@
 /* some generic scratch buffers that prevent this */
 /* from ever being thread-safe */
 static char buf[4096];
-static char name[4096];
 
 #define ret_lo(x) do{ftp_closeconn(site);return (x);}while(0)
-
-#define copyname(s) copystr(s,strlen(s),&dir->names)
 
 /* read remote dir */
 static int doftpdir(struct dirmem *dir, struct ftpsite *site,
 		    const char **dirs, int ndirs, int recurse,
-		    const regex_t *xfilt)
+		    const regex_t *xfilt, int nxfilt)
 {      
     char *s;
     const char *cd;
@@ -96,7 +93,7 @@ static int doftpdir(struct dirmem *dir, struct ftpsite *site,
 	    /* strip trailing / for command */
 	    if(buf[1])
 	      buf[strlen(buf)-1] = 0;
-	    if((i = ftp_port(site)) == ERR_OK &&
+	    if((i = ftp_dopen(site)) == ERR_OK &&
 	       (i=ftp_cmd2(site, "LIST -lRa ", buf)) == ERR_OK &&
 	       (i=parsels(dir,(read_func)ftp_read,site,cd,cd)) == ERR_OK &&
 	       dir->count > 1) {
@@ -164,6 +161,8 @@ static int doftpdir(struct dirmem *dir, struct ftpsite *site,
 			freelastname(&dir->files);
 			dir->count--;
 		    }
+		    if(!res)
+			res = toarray(dir);
 		    ret_lo(res);
 		}
 		/* at this point, I could ret_lo(ERR_DIRR), but maybe the */
@@ -209,7 +208,7 @@ static int doftpdir(struct dirmem *dir, struct ftpsite *site,
 			    *s++ = '/';
 			    *s = 0;
 			}
-			if(!xfilt || regexec(xfilt, buf, 0, NULL, 0)) {
+			if(!xfilt || match_lp(buf, xfilt, nxfilt)) {
 			    cd = copyname(buf);
 			    if(!cd)
 			      ret_lo(ERR_MEM);
@@ -225,10 +224,10 @@ static int doftpdir(struct dirmem *dir, struct ftpsite *site,
 		if(buf[1])
 		  buf[strlen(buf)-1] = 0;
 		if((j = ftp_chdir(site, buf)) == ERR_OK) {
-		    if(noparm || (j = ftp_port(site)) != ERR_OK ||
+		    if(noparm || (j = ftp_dopen(site)) != ERR_OK ||
 		       (j = ftp_cmd(site,"list -a")) != ERR_OK) {
 			noparm = 1;
-			if((j = ftp_port(site)) == ERR_OK)
+			if((j = ftp_dopen(site)) == ERR_OK)
 			  j = ftp_cmd(site,"list");
 		    }
 		    if(j == ERR_OK) {
@@ -247,6 +246,8 @@ static int doftpdir(struct dirmem *dir, struct ftpsite *site,
 					dir->count--;
 				    }
 				}
+				if(!res)
+				    res = toarray(dir);
 				ret_lo(res);
 			    }
 			    ret_lo(j);
@@ -277,7 +278,7 @@ static int doftpdir(struct dirmem *dir, struct ftpsite *site,
 
 /* read remote dir w/ retry */
 int readftpdir(struct dirmem *dir, struct ftpsite *site, const char **dirs,
-	       int ndirs, int recurse, const regex_t *xfilt)
+	       int ndirs, int recurse, const regex_t *xfilt, int nxfilt)
 {
     int i,err = 0;
     struct timeval rt;
@@ -285,7 +286,7 @@ int readftpdir(struct dirmem *dir, struct ftpsite *site, const char **dirs,
     for(i=site->to.retrycnt?site->to.retrycnt:-1;i;i--) {
 	if(debug & DB_TRACE)
 	  fprintf(stderr,"Trying %s [#%d]\n",site->host,site->to.retrycnt-i+1);
-	if((err=doftpdir(dir, site, dirs, ndirs, recurse, xfilt)) && err != ERR_DIR) {
+	if((err=doftpdir(dir, site, dirs, ndirs, recurse, xfilt, nxfilt)) && err != ERR_DIR) {
 	    if(debug & DB_TRACE)
 	      fprintf(stderr,"%s; waiting %d seconds\n",ftperr(err),site->to.retrytime);
 	    rt.tv_sec = site->to.retrytime;
@@ -301,23 +302,19 @@ int readftpdir(struct dirmem *dir, struct ftpsite *site, const char **dirs,
 
 /* read remote dir from remote file w/ retry */
 /* FIXME: this should read directly instead of using temp file */
-int readftplsf(struct dirmem *dir, struct ftpsite *site, const char *dirs,
-	       const char *rname)
+int readftplsf(struct dirmem *dir, struct ftpsite *site, const char *rname)
 {
     FILE *f;
     int err;
-    char *s;
+    const char *s;
 
-    strcpy(name,dirs);
-    if((s = strchr(name,' ')))
-      *s = 0;
+    if((s = strrchr(rname,'/')) && s != rname)
+      s = copynamel(rname, (int)(s - rname));
+    else if(s)
+      s = "/";
     else
-      s = name+strlen(name);
-    if(s == name || s[-1] != '/') {
-	*s++ = '/';
-	*s = 0;
-    }
-    if(!(s = copyname(name)))
+      s = "";
+    if(!s)
       return ERR_MEM;
     if(!(f = tmpfile())) {
 	perror("tmp file for ftplsf");
@@ -351,7 +348,7 @@ static int retrfile(FILE *f, struct ftpsite *site, const char *rf)
       ret_lo(ret);
     if((ret = ftp_type(site, "I")) != ERR_OK)
       ret_lo(ret);
-    if((ret = ftp_port(site)) != ERR_OK)
+    if((ret = ftp_dopen(site)) != ERR_OK)
       ret_lo(ret);
     if((n = ftell(f)) > 0) {
 	sprintf(buf,"%ld",n);
@@ -360,13 +357,17 @@ static int retrfile(FILE *f, struct ftpsite *site, const char *rf)
     }
     if((ret = ftp_cmd2(site, "RETR ", rf)) != ERR_OK && ret != ERR_CMD)
       ret_lo(ret);
+    if(ret == ERR_CMD)
+	return (ret = ftp_endport(site)) ? ret : ERR_CMD;
     n = 0;
     do {
-	if(n && nosig_fwrite(buf,n,1,f) != 1) {
+	if(n > 0 && nosig_fwrite(buf,n,1,f) != 1) {
 	    perror("fwrite");
 	    ret_lo(ERR_OS);
 	}
-    } while((n=ftp_read(site,buf,4096,0)) > 0);
+	errno = 0;
+    } while((n=ftp_read(site,buf,4096,0)) > 0 ||
+	    errno == EAGAIN || errno == EINTR);
     if(n<0)
       ret_lo((int)-n);
     return ftp_endport(site); /* don't log out for next file */

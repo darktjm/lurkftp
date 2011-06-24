@@ -58,9 +58,9 @@ void unlockof(void)
 {
     struct sembuf sop;
 
+    fflush(of);
     if(oflock < 0)
       return;
-    fflush(of);
     sop.sem_num = 0;
     sop.sem_op = 1;
     sop.sem_flg = 0;
@@ -71,12 +71,12 @@ void unlockof(void)
 
 static void rmoflock(void)
 {
-#ifdef _GNU_SOURCE
+#ifdef SEMCTL_NEEDS_ARG
     union semun arg;
 #endif
 
     if(anyfork) {
-#ifdef _GNU_SOURCE
+#ifdef SEMCTL_NEEDS_ARG
 	arg.val = 0;
 	semctl(oflock,0,IPC_RMID,arg);
 #else
@@ -111,7 +111,7 @@ static int file_read(FILE *f, void *buf, int buflen)
     return fread(buf, buflen, 1, f);
 }
 
-static int read_dir(struct ftpdir *dir, char manrecurs, regex_t *xfilt)
+static int read_dir(struct ftpdir *dir, char manrecurs, regex_t *xfilt, int nxfilt)
 {
     FILE *lf;
     int err;
@@ -119,9 +119,9 @@ static int read_dir(struct ftpdir *dir, char manrecurs, regex_t *xfilt)
     switch(dir->type) {
       case ST_FTPD:
 	return readftpdir(&dir->dirm, &dir->site, dir->dirs, dir->ndirs,
-			  manrecurs, xfilt);
+			  manrecurs, xfilt, nxfilt);
       case ST_LDIR:
-	return readtree(&dir->dirm,dir->dir0);
+	return readtree(&dir->dirm,dir->dir0, dir->linkout);
       case ST_MFILE:
 	headsubst(scratch,dir->lsfile,dir,NULL,NULL);
 	if((lf = fopen(scratch, "r"))) {
@@ -147,7 +147,7 @@ static int read_dir(struct ftpdir *dir, char manrecurs, regex_t *xfilt)
 	    return ERR_DIR;
 	}
       case ST_FTPLSLRF:
-	return readftplsf(&dir->dirm, &dir->site, dir->dir0, dir->lsfile);
+	return readftplsf(&dir->dirm, &dir->site, dir->lsfile);
       case ST_CMD:
 	headsubst(scratch,dir->lsfile,dir,NULL,NULL);
 	if((lf = popen(scratch, "r"))) {
@@ -166,7 +166,7 @@ static int read_dir(struct ftpdir *dir, char manrecurs, regex_t *xfilt)
 }
 
 
-void filterdir(struct dirmem *dir, const regex_t *filter, int cut)
+void filterdir(struct dirmem *dir, const regex_t *filter, int nfilter, int cut)
 {
     struct fname **p, **q;
     int i, cnt = dir->count;
@@ -178,7 +178,7 @@ void filterdir(struct dirmem *dir, const regex_t *filter, int cut)
 	    strcat(scratch," -> ");
 	    strcat(scratch,(*p)->lnk);
 	}
-	if(!regexec(filter, scratch, 0, NULL, 0) == !cut)
+	if(!match_lp(scratch, filter, nfilter) == !cut)
 	  *q++ = *p;
 	else {
 	    if(debug & DB_OTHER)
@@ -188,9 +188,10 @@ void filterdir(struct dirmem *dir, const regex_t *filter, int cut)
     }
     dir->count = cnt;
 }
+
 static void filt_dir(struct dirmem *dir, const char *ifilter, regex_t *iregex,
-		     const char *xfilter, regex_t *xregex,
-		     char filtdir, char filtspec)
+		     int niregex, const char *xfilter, regex_t *xregex,
+		     int nxregex, char filtdir, char filtspec)
 {
     struct fname **o, **n;
     int i, j;
@@ -198,12 +199,12 @@ static void filt_dir(struct dirmem *dir, const char *ifilter, regex_t *iregex,
     if(ifilter) {
 	if(debug & DB_TRACE)
 	  fprintf(stderr,"Filtering out all but '%s'\n",ifilter);
-	filterdir(dir, iregex, 0);
+	filterdir(dir, iregex, niregex, 0);
     }
     if(xfilter) {
 	if(debug & DB_TRACE)
 	  fprintf(stderr,"Filtering out '%s'\n",xfilter);
-	filterdir(dir, xregex, 1);
+	filterdir(dir, xregex, nxregex, 1);
     }
     if(filtdir) {
 	for(o=n=dir->array,j=0,i=dir->count;i;i--,o++)
@@ -227,22 +228,29 @@ static void filt_dir(struct dirmem *dir, const char *ifilter, regex_t *iregex,
 #if TIMECORRECT
 void timecorrect(struct ftpdir *dir)
 {
+    int i;
+    struct fname **n;
+    struct tm tm;
+
     /* time-correct */
-    if(op->srcls.type == ST_FTPD && op->srcls.dirm.count) {
+    dir->timecorrect = 0;
+    if(dir->type == ST_FTPD && dir->dirm.count) {
 	/* since this list sorted in date-first ascending order, get last */
 	/* (i.e. most recent) entry & see if it matches file's MDTM date */
-	for(i=op->srcls.dirm.count,n=op->srcls.dirm.array+i-1;i;i--,n--)
+	for(i=dir->dirm.count,n=dir->dirm.array+i-1;i;i--,n--)
 	  if(S_ISREG((*n)->mode)) /* only files have important dates */
 	    break;
 	if(i) { /* if there was any file at all, n points to most recent */
 	    strcpy(scratch,(*n)->dir);
 	    strcat(scratch,(*n)->name);
-	    if(filetm(site,scratch,&tm) && /* mdtm command successful */
+	    if(!ftp_filetm(&dir->site,scratch,&tm) && /* mdtm command successful */
 	       (tm.tm_year != (*n)->year-1900 || tm.tm_mon != (*n)->month-1 ||
 		tm.tm_mday != (*n)->day ||
 		((*n)->hr >= 0 && tm.tm_hour != (*n)->hr) ||
 		((*n)->min >= 0 && tm.tm_min != (*n)->min))) {
 		time_t t1, t2;
+		int j;
+
 		/* ugh! remote ls returns inaccurate times! */
 		/* see how inaccurate it is.. */
 		t1 = mktime(&tm);
@@ -258,29 +266,37 @@ void timecorrect(struct ftpdir *dir)
 		else
 		  tm.tm_min = 0;
 		tm.tm_sec = 0;
-		tm.tm_isdst = -1;
 		t2 = mktime(&tm);
-		i = (time_t)difftime(t1,t2);
-		if(debug & DB_TRACE) {
-		    j = i<0?-i:i;
-		    fprintf(stderr,"Correcting time by %s%d:%d:%d:%d\n",
-			    i<0?"-":"",j/(24*60*60),j/(60*60)%24,j/60%60,j%60);
-		}
-		for(i=op->srcls.dirm.count,n=op->srcls.dirm.array;i;i--,n++) {
+		t2 = (time_t)difftime(t1,t2);
+		j = (int)(t2<0?-t2:t2);
+		if(j%(60*60))
+		    dir->timecorrect = t2 < 0 ? -1 : 1;
+		if(debug & DB_TRACE)
+		    fprintf(stderr,"Correcting time by %s%d:%02d:%02d:%02d\n",
+			    t2<0?"-":"",j/(24*60*60),j/(60*60)%24,j/60%60,j%60);
+		for(i=dir->dirm.count,n=dir->dirm.array;i;i--,n++) {
 		    tm.tm_year = (*n)->year-1900;
 		    tm.tm_mon = (*n)->month-1;
 		    tm.tm_mday = (*n)->day;
 		    if((*n)->hr >= 0)
-		      tm.tm_hour = (*n)->hr;
+			tm.tm_hour = (*n)->hr;
 		    else
-		      tm.tm_hour = 12; /* why not? */
+			tm.tm_hour = t2 < 0 ? 23 : 0;
 		    if((*n)->min >= 0)
 		      tm.tm_min = (*n)->min;
 		    else
-		      tm.tm_min = 0;
-		    tm.tm_sec = 0;
-		    t1 = mktime(&tm) + i;
+			tm.tm_min = t2 < 0 ? 59 : 00;
+		    tm.tm_sec = t2 < 0 ? 59 : 0;
+		    t1 = mktime(&tm) + t2;
+		    if(debug & DB_TRACE)
+			fprintf(stderr, "Correcting %d-%02d-%02d %02d:%02d to ",
+				tm.tm_year + 1900, tm.tm_mon + 1,
+				tm.tm_mday, tm.tm_hour, tm.tm_min);
 		    tm = *localtime(&t1);
+		    if(debug & DB_TRACE)
+			fprintf(stderr, "%d-%02d-%02d %02d:%02d\n",
+				tm.tm_year + 1900, tm.tm_mon + 1,
+				tm.tm_mday, tm.tm_hour, tm.tm_min);
 		    (*n)->year = tm.tm_year+1900;
 		    (*n)->month = tm.tm_mon+1;
 		    (*n)->day = tm.tm_mday;
@@ -349,7 +365,8 @@ static void process_all(void)
 	/* read "remote" dir */
 	if(debug & DB_TRACE)
 	  fputs("Reading remote directory\n",stderr);
-	i = read_dir(&op->srcls, op->manrecurs, op->xfilter?&op->xregex:NULL);
+	i = read_dir(&op->srcls, op->manrecurs, op->xfilter?&op->xregex:NULL,
+		     op->xnre);
 	if(i) {
 	    if(!op->quiet) {
 		lockof();
@@ -360,8 +377,8 @@ static void process_all(void)
 	    continue;
 	}
 	/* run filters on it */
-	filt_dir(&op->srcls.dirm, op->ifilter, &op->iregex,
-		 op->xfilter, &op->xregex, op->filtdir, op->filtspec);
+	filt_dir(&op->srcls.dirm, op->ifilter, &op->iregex, op->inre,
+		 op->xfilter, &op->xregex, op->xnre, op->filtdir, op->filtspec);
 	/* check if anything left after filtering */
 	if(!op->srcls.dirm.count) {
 	    lockof();
@@ -372,7 +389,7 @@ static void process_all(void)
 	}
 	/* sort; ready for diffing. */
 	sort((const struct fname **)op->srcls.dirm.array, op->srcls.dirm.count,
-	     op->detmove?MVCMP:REPTCMP);
+	     op->detmove?MVCMP:DIFFCMP);
 #if TIMECORRECT
 	if(op->srcls.type != ST_LDIR && op->srcls.type != ST_MFILE)
 	  timecorrect(&op->srcls);
@@ -381,14 +398,14 @@ static void process_all(void)
 	if(debug & DB_TRACE)
 	  fputs("Reading local directory\n",stderr);
 	i = read_dir(&op->dstls,op->manrecurs,
-		 op->xfilter?&op->xregex:NULL);
+		     op->xfilter?&op->xregex:NULL, op->xnre);
 	if(i && i != ERR_DIR) {
 	    fprintf(stderr,"Internal error: %s\n", ftperr(i));
 	    continue;
 	}
 	/* sort; ready for diffing. */
 	sort((const struct fname **)op->dstls.dirm.array, op->dstls.dirm.count,
-	     op->detmove?MVCMP:REPTCMP);
+	     op->detmove?MVCMP:DIFFCMP);
 #if TIMECORRECT
 	if(op->dstls.type != ST_LDIR && op->dstls.type != ST_MFILE)
 	  timecorrect(&op->dstls);

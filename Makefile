@@ -5,13 +5,22 @@
 #SOCKS=-DSOCKS
 #SLIB=-lsocks
 
-# GCC + glibc:
-CC=gcc -D_XOPEN_SOURCE=1 -D_XOPEN_SOURCE_EXTENDED=1 -D_GNU_SOURCE=1 -Wall -Wwrite-strings -Wstrict-prototypes
+#For broken (pre glibc2.1) versions of glibc
+#and any other system that doesn't make semctl(2) vararg
+#note that this assumes that union semun is defined by the headers
+SEMCTLD=-DSEMCTL_NEEDS_ARG
+
+#For systems that don't support ESIZE; used for hack around idiotic regex size
+#limit
+#REFLG=-DREG_ESIZE=0
+
+# GCC:
+CC=gcc -D_XOPEN_SOURCE=1 -D_XOPEN_SOURCE_EXTENDED=1 -D_GNU_SOURCE=1 -Wall -Wwrite-strings -Wstrict-prototypes $(SEMCTLD)
 # XOPEN compliant systems:
 #CC=c89 -D_XOPEN_SOURCE=1 -D_XOPEN_SOURCE_EXTENDED=1 # Sun: -D__EXTENSIONS__
 
 #gcc
-CFLAGS=-g3 -O2
+CFLAGS=-g3 -O3
 #cc
 #CFLAGS=-O
 
@@ -32,7 +41,7 @@ SCRIPT = atcron
 
 all: $(EXE)
 
-OBJS = lurkftp.o opt.o diff.o rept.o mir.o misc.o ftp.o ftpsupt.o
+OBJS = lurkftp.o opt.o diff.o rept.o mir.o misc.o ftp.o ftpsupt.o break_lp.o
 
 pipe: pipe.o
 	$(CC) -o $@ pipe.o
