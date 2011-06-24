@@ -1,0 +1,131 @@
+
+lurkftp v1.00
+
+What it is: This is the ultimate FTP site lurker program.  It is a simple
+program to monitor changes in FTP sites and either just report changes or
+mirror changes into a local directory.
+
+So why another mirror program?  Because I couldn't get any of the mirror
+programs on sunsite to do what I wanted half-way reliably & efficiently.
+
+Read the man page for more details.
+
+As far as I know, Alex deVries <adevries@engsoc.carleton.ca> has created an
+RPM package for this (and uploaded it to ftp.redhat.com), and Christian
+Schwarz <schwarz@monet.m.isar.de> has created a Debian package for this.
+Thanks guys.  I do not (and probably will not) maintain anything other than
+ftp://sunsite.unc.edu/pub/Linux/system/network/file-transfer/lurkftp*.tar.gz,
+although I might change my mind and add distribution generation to a Makefile
+instead of doing it manually.  If I ever decide to "upgrade" my system
+(which will take forever, since I never log any of the plentiful changes I
+make to the system), I'll make sure I put a recent rpm/dpkg on my system so
+I can maintain these, too.
+
+***************************************************************
+
+Installation notes:
+
+Based on bug reports by people who tried to run this on non-Linux systems,
+this bugger should compile on just about any POSIX-compliant system.  If it
+doesn't, then feel free to send me a compiler error dump or whatever.  The
+only non-Linux system(s) I have access to for free are some Sun workstations
+(Solaris 2.5).  I can probably  look up information on AIX 4.2/3.2.5 machines
+and DEC Ultrix machines, too, although I can't compile on them.  I guess I
+could also try getting it to work under AIX 2.1, but I'd rather not bother.
+
+SOCKS support isn't something I use, so you'll have to fix it yourself if
+it's broken.  Instead of using the big, nasty collection of -D's, I put
+those defines into ftp.h and modified ftp.c appropriately.  You'll have to
+modify the Makefile to include the -lsocks and the -DSOCKS, as shown
+therein.
+
+***************************************************************
+
+Changelog
+
+  0.9 - first release 4/23/97 - I thought it worked.  What did I know?
+
+  0.91 - 4/25/97 - Major overhaul; Seems to work now
+	man page cleaned up & updated
+	-L (listing timeout) removed; use -T instead
+	-P option output file corruption fixed
+	-u (non-anonymous FTP) option added
+	-z/Z (auto gzip/gunzip) options added
+	-L (use remote ls-lR[.(Z|gz)] file) option added
+	-U (detect moved files) option added
+	-n (stamp only) option added
+	-A (append) option added
+	general code cleanups
+
+  0.92 - 4/27/97 - minor bug fix + SVR4 fixes
+        more examples added to man page (thanks to Andy Wick)
+	Solaris fixes [i.e. removal of BSD calls] (thanks to Andy Wick &
+          Tobias Oetiker & the dept. of Geo @ Indiana State University)
+	Fixed -S option's "any output" detection (hopefully)
+
+  0.93 - 4/29/97 - minor bug fix + new -M option
+        Fixed version # in man page & code
+	Fixed a few comparison & sorting bugs
+	Added -M (force manual recursion) option
+
+  0.94 - 4/30/97 - minor bug fix + csh-style option file parsing
+	Removed . & .. from listing & recursion
+	"Fixed" symlink-as-root problem
+	"Fixed" cryptic "unreachable" error message
+	Changed '/"/$/~ handling in parsing of files
+	More man page cleanups
+	Fixed ls-file written before downloads verified
+
+  0.95 ("bugfree") - 5/2/97 - socks support + minor bug fixes
+	Fixed include/exclude pattern reset
+	Added socks support (thanks to Mark Hindess)
+	Refixed SYSV support (thanks to Jens Schleusener)
+	Refixed option parsing bugs introduced in 0.94
+
+  0.96 ("redface") - - minor bug fixes
+	Fixed minor listing bug (thanks again Jens Schleusener)
+	Fixed SOCKS support (sorta)
+	Fixed minor argument parsing bugs
+	Removed superfluous MDTM command for soft links
+	Changed LIST -A to -a (since "." and ".." are manually filtered anyway)
+	Removed include filter from manual recursion
+
+  0.99 ("bloated hog") - misc feature enhancements
+  	Misc minor documentation updates
+	Code split/cleanup
+	-A (append) flag fixed, as well as other append problems
+	Added more %-switches to pipe
+	Added -B (background execute) option
+	Added -c (copy local) and -t (FTP to) options (not working yet)
+	Added -o/-O (alternate dir location) options
+	Added -N (no continue if failure) option
+	Added -k (ACCT login) option
+
+***************************************************************
+
+KNOWN BUGS
+
+[+: may want to fix; *: definitely want to fix; -: may never fix]
+
+* Doesn't handle non-UNIX remote sites [I know of none any more]
+* Probably plenty of nasty hidden bugs
++ Some fixed-sized buffers may overflow
++ Few options are really range-checked
+- Groups & user names aren't mirrored
+- Sockets aren't mirrored
+- Exact time isn't used for comparison (only accurate to what ls gives)
+
+Ok, to give some credit here:
+
+I finally took a detailed look at mirror.pl's documentation, and decided to
+add the following to lurkftp:
+- "ignore" filter
+- option to ignore dates &/or ignore size &/or look for "newer" files
+- option for "skip mirror if too many changes"
+- option for "Force transfer of everything"
+- new list parsing routines (VMS/DOS/Mac) from lsparse.pl
+
+----------------------------------------------------------------------------
+ Thomas J. Moore, Hacker/SysAdmin  | Must ... Kill ... Bugs ... AAARRRGGHHH
+ inet:  dark@mama.indstate.edu     | unix ada asm c/c++ mcu ee amiga bored
+----------------------------------------------------------------------------

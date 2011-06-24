@@ -1,0 +1,62 @@
+-a (at) is replaced by script: atcron
+guarantee of seekability on pipes is replaced by command: pipe
+guarantee of not executing command unless/until transfer successful is
+removed.  SIGPIPE is given on error instead.  Can use command: pipe instead
+-S (mail) is replaced by generic pipe: -R <pipe>
+-R/-Q/-T/-r/-C (timeout) replaced by generic timeout: -T <type><val>...
+
+Custom reports (see man page): -R/-r options
+
+There are more %-switches for pipes; see man page.  Most importantly,
+%[<cond>?<yes>:<no>] - if <cond> then add <yes>, else <no>.  Actually, the
+parsing of this is nonrecursive, so ?<yes>:<no>:<yes>:<no>... works.
+
+You can now read source/destination directories in any of 6 possible ways,
+and retrieve/store files in any of 3 possible ways.
+
+Directory read method is set by old options and/or new -o/-O options.
+Note: directories in 'd' and 'f' options are cumulative & may be added to
+for the source dir by simply listing more.  If multiple directories are
+listed for src, all are read & combined.  If multiple dirs are in dest, only
+the last dir is read and updated, and soft links are resolved to alternate
+directories.  In this mode, new files which match ones already in other
+directories are updated as a soft link into the old file.
+
+"source" dir:
+<ftp_addr> <dirs> -> FTP site <ftp_addr>, containing given <dirs>.
+-L <name> -> Retrieve ls-lR file from already-specified FTP site
+-f <name> -> Retrieve marker file, with root specified by given dirs.
+-O<type>:<parm>: generic specifier
+
+"dest" dir:
+If placeholder is ever specified for "dest", then it is updated.
+
+default -> placeholder file
+-d <ldir> -> default = local directory
+-t <site> -> default = remote FTP dir
+-L <site> -> remote FTP ls-lR file
+-l <name> -> local placeholder file
+-o<type>:<parm>: generic specifier; see above.
+
+"dest" file:
+default -> no mirroring is done unless a dest is specified
+-d <dir> -> files local dir
+-e <cmd> -> send to command; compatible w/ -d
+-t <site> -> put on FTP site
+
+"source" file:
+default -> retrieve from given FTP site/dir
+-c -> ignore site & get files from local dir
+-g <cmd> -> "retrieve" file by running pipe
+
+Valid transfer methods:
+pipe->pipe
+pipe->ftp
+pipe->local
+local->ftp
+local->local
+local->pipe
+ftp->local  - implemented & tested w/ -d option
+ftp->pipe   - implemented & tested w/ -e option
+ftp->ftp  -> This is a special mode, and requires PASV support on at least one
+             of the two sites.

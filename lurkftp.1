@@ -1,0 +1,907 @@
+." Man page for lurkftp
+."
+." (C) 1997 Thomas J. Moore
+." questions/comments -> dark@mama.indstate.edu
+." 
+." This is free software.  No warranty for applicability or fitness is
+." expressed or implied.
+." 
+." This code may be modified and distributed freely so long as the original
+." author is credited and any changes are documented as such.
+."
+." .TH LURKFTP 1 "UNIX User's Manual"
+.TH LURKFTP 1 "May 22, 1997" "" "FTP Site Lurker's Manual"
+.SH NAME
+lurkftp v1.00 \- monitor and/or mirror FTP sites
+.SH SYNOPSIS
+.I lurkftp
+.RB "[\|" options "\|]"
+.RB "[\|" site
+.RB "[\|" dir "\|] .. ] .."
+.SH DESCRIPTION
+.I Lurkftp
+is the ultimate FTP site lurker and mirroring program.  It will monitor
+changes in source directories and either just report changes or mirror
+changes into a destination directory.
+
+.I Lurkftp
+in its most basic mode takes site/directory-list "pairs", as follows:
+.PP
+.nf
+site1\ /pub/dir1
+site2\ /pub/dir2a\ /pub/dir2b
+site3\ dir3
+.fi
+.PP
+These pairs are either separated by newlines (if in an option file), by
+the
+.B  \-+
+option (e.g. "lurkftp\ site1\ /pub/dir1\ \-+\ site2\ /pub/dir2"),
+or by the EOF of an option file.
+
+Once all options are parsed, processing begins with the first pair and (by
+default) continues with subsequent pairs until all have been processed.
+
+Default processing operates as follows:
+.TP
+\(bu
+the directory is recursively read from the source site
+.PP
+.TP
+\(bu
+If no directory was readable from the source site, the line
+.IB \fR` ***\  <site> \  <dirs> :\  <error> \ *** \fR'
+is printed, and processing continues with the
+next site.
+.PP
+.TP
+\(bu
+The results are compared with the `destination directory', which is by default
+the contents of a placeholder file, normally called
+.BI .chkls. <site><dirs> .gz\fR,
+with `/''s and `\ ''s removed  from
+the dirs list and replaced with `.' and `_', respectively.  Thus, the
+default placeholder file for the "pair"
+.RB ` site1
+.B /pub/dir1
+.BR /pub/dir2 '
+is
+.RB ` .chkls.site1.pub.dir1_.pub.dir2.gz '.
+.PP
+.TP
+\(bu
+If any changes occur, the line
+.RB ` \-\-\-\ \fI<site>\fB\ \fI<dirs>\fB\ \-\-\- '
+is printed, along with a list of changes, sorted by date, then name.  Each
+change is preceded by a single character indicating the type of change.
+Additions and removals are preceded by
+.RB ` + '
+and
+.RB ` - ',
+respectively.  Other prefixes are documented by the options which might
+generate those prefixes.
+.PP
+.TP
+\(bu
+If any changes occurred, the destination placeholder file is updated.
+.PP
+.TP
+\(bu
+Processing then continues with the next site.
+.SH OPTIONS
+The entire pair list and/or each pair can be preceded by a list of
+.IR options .
+Actually, any
+.I options
+that precede the
+.B \-+
+option (explicit or implied) will apply to the given pair.
+.br
+Note:  argument-less options take the `+' prefix to mean the opposite of the
+normal meaning.  Other options can also take `+', but the meaning doesn't
+change.  The
+.B \-+
+.RB ( ++ )
+.B \-h
+.RB ( +h ),
+and
+.B \-\-
+.RB ( +\- )
+also don't change meaning.
+
+.SS Percent Substitution
+There are two types of %-substitution:  outside and inside.  Outside
+substitution is for site-wide items, such as file names and report headers.
+Inside substitution is for file-specific items, such as mirror pipes and
+report lines.
+
+The following outside-substitutions are done:
+.RS
+.TP
+.B %s
+Site name
+.PP
+.TP
+.B %d
+Underline-separated list of directories, substituting
+.RB ` / '
+with
+.RB ` . '
+and
+.RB ` \  '
+with
+.RB ` _ '.
+.PP
+.TP
+.B %p
+Space-separated list of directories
+.PP
+.TP
+.B %S
+Alternate site
+.PP
+.TP
+.B %D
+Alternate
+.BR %d \-style
+list of directories
+.PP
+.TP
+.B %P
+Alternate
+.BR %p \-style
+list of directories
+.PP
+.TP
+.B %t
+Extra text; for headers/footers this is "totals" and for error messages this
+is the actual error message.  Otherwise this is an empty string.
+.PP
+.TP
+.B %%
+The
+.RB ` % '
+character
+.PP
+.RE
+
+The following inside-substitutions are done:
+.RS
+.TP
+.B %f
+File name without path
+.PP
+.TP
+.B %L
+The link name (if appropriate)
+.PP
+.TP
+.B %r
+Full directory path to remote file (without file name; with trailing 
+.RB ` / ')
+.PP
+.TP
+.B %l
+Full directory path to local file (without file name; with trailing
+.RB ` / ')
+.PP
+.TP
+.B %s
+Site name
+.PP
+.TP
+.B %b
+Size (in bytes)
+.PP
+.TP
+.B %m
+Mode (full mode, including file type)
+.PP
+.TP
+.B %d
+Modification date (YYYYMMDD)
+.PP
+.TP
+.B %t
+Modification time (HHMM)
+.PP
+.TP
+.BI %{ <format> }
+Modification date passed with
+.I <format>
+to
+.IR strftime (3)
+.PP
+.TP
+.B %D
+The device major number (device nodes only)
+.PP
+.TP
+.B %M
+The device minor number (device nodes only)
+.PP
+.TP
+.B %T
+The type of operation ('+', '-', etc.)
+.PP
+.TP
+.BI %[ conditional_text ]
+Add %-substituted text conditionally.  The format of the conditional text is:
+.I <condition>
+[
+.B ?
+.I <true_text>
+] [
+.B :
+.I <false_text>
+].
+Note that either the
+.B ?
+or the
+.B :
+or both must be present.  The
+.I <condition>
+is evaluated, and either the
+.I <true_text>
+or the
+.I <false_text>
+is evaluated and inserted as appropriate.  The following conditions are
+available:
+.RS
+.TP
+.BI B\fR[\fB=\fR|\fB>\fR|\fB<\fR][ size ]
+Check byte-size of file.  If no directional specifier is given, then
+.B >
+is implied.  If no
+.I size
+is given, then 0 is implied.  Size may be specifed as number of bytes,
+number of
+.BR K ilobytes,
+number of
+.BR B locks,
+or number of
+.BR M egabytes
+by adding (or omitting) the appropriate capital-lettered suffix.
+.PP
+.TP
+.B l
+True if directory entry is a soft link.
+.PP
+.TP
+.B f
+True if directory entry is a regular file.
+.PP
+.TP
+.B d
+True if directory entry is a directory.
+.PP
+.TP
+.B s
+True if directory entry is a socket.
+.PP
+.TP
+.B b
+True if directory entry is a block-special file.
+.PP
+.TP
+.B c
+True if directory entry is a character-special file.
+.PP
+.TP
+.B p
+True if directory entry is named pipe.
+.PP
+.TP
+.B t
+True if sticky bit is set for directory entry.
+.PP
+.TP
+.RB [ ugo ] rwxS
+Check permissions as specified by given pattern.
+.B S
+stands for setuid/setgid.  Permissions are anded with given mask (if no ugo
+given, then all are implied) and true is returned if any bit is still set.
+.PP
+.TP
+.BI T <type>
+True if type of operation is equal to given
+.I <type>
+character.
+.PP
+.RE
+.PP
+.TP
+.B %%
+The
+.RB ` % '
+character
+.PP
+.RE
+
+.SS Generic Directory Specification
+All FTP sites may be specified as follows: [ [
+.I <user>
+] [
+.BI , <acct>
+] [
+.BI : <pass>
+]
+.B @
+] [
+.I <host>
+]
+[
+.BI , <port>
+] [
+.BI : <dir>
+].  The
+.B \-o
+and
+.B \-O
+options take generic directory specs as arguments.  These are as follows:
+.TP
+.BI l <ls\-lR\ file>
+This specifies a local file with a format parsable by the listing parser.
+The file name is processed by outside %-substitution.
+.PP
+.TP
+.BI c <command>
+This specifies a command to run which will generate output parsable by the
+listing parser.  This is usally an
+.IR ls (1)
+or a
+.IR find (1)
+command.  The command is processed by outside %-substitution.
+.PP
+.TP
+.BI m <lsfile>
+This specifies a lurkftp-generated placemarker file.  The file name is
+processed by outside %-substitution.
+.PP
+.TP
+.BI d <localdir>
+This specifies a local directory to recursively read for directory entries.
+Multiple directories may be specified.
+.PP
+.TP
+.BI f <ftpsite>
+This specifies a site+dir to recursively read for directory entries.
+Multiple directories may be specified.
+.PP
+.TP
+.BI L <ftpsite>
+This specifies a remote file in a format parsable by the listing parser to
+retrieve and use for the directory.
+.PP
+
+.SS General Options
+.TP
+.B \-B
+Run in background:  close stdin/stdout/stderr, fork, and dissociate from
+parent process group.
+.I Lurkftp
+should return immediately to the invoking process.
+.PP
+.TP
+.BI \-F\  <filename>
+Read an option file (immediately).  In option files, blank lines and
+anything on a line after a `#' are ignored.  An implicit
+.RB ` \-+ '
+option (i.e. site/dir pair separator) is generated at the end of any line
+containing a site and/or directory name.  Quotes
+.RB (` \(aq '
+and `\fB"\fR'), the `\fB\\\fR' character, and the
+.RB ` ~ '
+character in option files are handled as per
+.IR csh (1).
+Environment variables
+.RI (\fB$ <name>
+or
+.BI ${ <name> }\fR)
+are also expanded when not escaped by single quotes or backslash.
+.PP
+.TP
+.B \-P
+Process in parallel by calling
+.IR fork (2)
+before processing each site.
+.PP
+.TP
+.B \-N
+Indicate that subsequent operations depend on their predecessor.  That is,
+forks will not separate these operations, and failure in one operation will
+terminate all subsequent dependent operations.  There may be multiple
+dependency groups.
+.PP
+.TP
+.BI \-z\  <prog>
+Program to filter all ls files through when writing (default:
+.BR gzip ).  Setting this to an empty string disables output filtering.
+.PP
+.TP
+.BI \-Z\  <prog>
+Program to filter ls files or remote listings through if the first character
+of the file in question is non-printable as per ANSI
+.IR isprint (3).
+(default:
+.BR gunzip ).  Setting this to an empty string resets to the default.
+.PP
+.TP
+.BI \-v\  <mask>
+Set debug mask to
+.IR <masks> .
+Masks greater than 0 will produce some
+.I lurkftp
+trace messages.
+.PP
+.TP
+.B \-\-
+Next argument is literal.  Note that this differs from
+.IR getopt (3)
+in that it only literalizes the next option, not all remaining options.
+.PP
+.TP
+.B \-+
+Separate multiple site/dir groups.
+.PP
+.TP
+.B \-h
+Print help message and exit.
+.PP
+.SS Reporting Options
+.TP
+.B \-q
+Suppress change report
+.PP
+.TP
+.BR \-R\  <command>
+If a report is generated, then pipe that report to the given command.
+Otherwise don't invoke the command.
+.PP
+.TP
+.BR \-r\ <type><string>
+This option sets various report-related strings.
+.RS
+.TP
+.I Type
+.I Function
+.PP
+.TP
+.B t
+Sets the report's title string.  Outside %-substitution is performed on this
+string.  The default is `\-\-\- %s %d \-\-\-'.
+.PP
+.TP
+.B d
+Sets the report's directory-entry line.  Inside %-substitution is performed
+on this string.  The default is `%T %d %12b %r%f%[l? -> %L]' if
+mirroring is turned on, and is the same, but surrounded by the conditional
+`%[T<T>: ... ]' when mirroring is disabled so that moves are not reported.
+.PP
+.TP
+.B f
+Sets the report's footer string.  Outside %-substitution is performed on this
+string.  The default is `%t'.
+.PP
+.TP
+.B s
+Sets the report's sort string.  The sort string is at most 8 comparison
+specifiers, and sorting is ordered by performing each comparison in the
+order of the string until a mismatch is found.  The default is `fdpnlst'.
+The following comparison specifiers can be used, as well as the reverse-order
+version (which is the same letter, but capitalized):
+
+.RS
+.TP
+.B f
+Sort numerically by file type.
+.PP
+.TP
+.B m
+Sort numerically by mode (other than file type).
+.PP
+.TP
+.B p
+Sort alphabetically by file's path.
+.PP
+.TP
+.B n
+Sort alphabetically by file's name.
+.PP
+.TP
+.B l
+Sort alphabetically by link name, if present.
+.PP
+.TP
+.B d
+Sort by date (ymd) if entry is a file.
+.PP
+.TP
+.B t
+Sort by time (hm) if entry is a file.
+.PP
+.TP
+.B s
+Sort by size (in bytes) if entry is a file.
+.PP
+.RE
+.PP
+.TP
+.B T
+Sets the error report's title string.  Outside %-substitution is performed
+on this string.  The default is `\\n*** ERRORS IN %S %P \-> %s %p MIRROR ***'.
+.PP
+.TP
+.B D
+Sets the error report's directory-entry line.  Inside %-substitution is
+performed on this string.
+.PP
+.TP
+.B F
+Sets the error report's footer string.  Outside %-substitution is performed
+on this string.
+.PP
+.TP
+.B S
+Sets the error report's sort string.  The sort string is in the same format
+as that used by the standard report.  The default is `PNLFDST'.
+.PP
+.TP
+.B e
+Sets the format for general error messages.  Outside %-substitution is
+perfomed on this string.
+.PP
+.RE
+.PP
+.SS Site/Directory Specification Options
+.TP
+.BI \-o\  <dirspec>
+Set generic source directory. 
+.PP
+.TP
+.BI \-O\  <dirspec>
+Set generic destination directory.
+.TP
+.BI \-p\  <password>
+Set default FTP login password (default:
+.IB <myusername> @\fR)
+.PP
+.TP
+.BI \-b\  <base>
+Change default name (formerly just base name) for placeholder files (default:
+.BR .chkls.%s%d.gz ).  Outside %-substitution is performed on the name.
+.TP
+.BI \-L\  <rname>
+Use file
+.I <rname>
+on remote site instead of performing remote directory listing.  Note:  this
+option overrides the
+.B -f
+option below.  This option only affects the next site/dir pair.
+.PP
+.TP
+.B \-U
+Detect unchanged (i.e. moved) files.  If two regular files have the same
+date, size, and name, but are located in different directories, then they
+are processed as moved.  When no mirror directory or pipe is defined, moved
+files are not reported; otherwise they are reported with
+.RB ` < '
+and
+.RB ` > '
+for the original and new location, respectively, and the file is not
+retrieved from the remote site, but either ignored (if pipes are enabled) or
+moved as if by
+.IR mv (1)
+if mirroring to a directory is enabled.  An error in moving will be reported
+by the characters
+.RB ` ( '
+and
+.RB ` ) '.
+.PP
+.TP
+.B \-M
+Force "manual" recursion when retrieving remote listing by using
+.I LIST -la
+or
+.I LIST
+(depending on which works) on each directory and issuing a
+.I CWD
+command to enter subdirectories.  This mode is invoked automatically if the
+default
+.I LIST -lRa
+command fails for any reason (usually because the
+.I -lRa
+options aren't supported by the remote FTP daemon).  This is especially
+useful if specific directories are to be filtered out, as the recursion
+routine will match the name of the directory to be entered (with a trailing
+.RB ` / ')
+against the exclude filter before recursing.
+.PP
+.SS Mirroring Options
+.TP
+.B \-m
+Perform mirroring when applicable; requires
+.B \-d
+and/or
+.B \-e
+and/or
+.B \-t
+options.  If this option is turned off, reports are still made, so this option
+can be used to test what the results of a mirroring operation would be.
+Beware:  List files are also updated, however, so some pseudo-directory tricks
+to mirror-pipe specific files will pretend complete success.  (e.g. the
+sunsite .lsm trick used in the example can't be harmlessly tested before
+running).  Any failure to download a file (and, in the case of the
+.B \-e
+option, complete the pipe successfully) will be reported by an entry preceded
+by the
+.RB ` * '
+character, and any failure to remove a file will be reported by an entry
+preceded by the
+.RB ` # '
+character.
+.PP
+.TP
+.BI \-d\  <ldir>
+Set local directory to
+.IR <ldir>
+and read it instead of a placeholder file.  This option only applies to the
+next site/dir pair.
+.PP
+.TP
+.BI \-e\  <cmd>
+Don't update the local directory when mirroring; instead pipe each new file
+into
+.IR <cmd> .
+This option only applies to the next site/dir pair.  It would probably also
+be useful to use the
+.B \-l
+and
+.B \-f
+options with this.  The local directory
+.RB ( -d )
+is only needed if the
+.B %l
+%-escape is used.  Inside %-substitution is perfomed on
+.IR <cmd> .
+.PP
+.TP
+.BI \-l\  <file>
+Read and update placeholder
+.I <file>
+instead of using contents of local directory.  This option only affects the
+next site/dir pair.  The same %-substitutions are done as for the
+.B -b
+option.
+.PP
+.TP
+.BI \-f\  <file>
+Read placeholder
+.I <file>
+instead of retrieving remote directory.  This option only affects the next
+site/dir pair.  The same %-substitutions are done as for the
+.B -b
+option.  This option overrides the
+.B -L
+option above.
+.PP
+.TP
+.B -E
+Make "exact" comparison: fix modes to match remote site.  The report shows
+changes which merely change modes by preceding them with a
+.RB ` M '.
+Failure to perform the change will be reported by preceding the
+entry with
+.RB ` $ '.
+.PP
+.TP
+.B -n
+Make no file transfers or moves, or deletions; just update date stamps [and
+modes if the
+.B -E
+option is active].
+.PP
+.TP
+.B \-A
+Attempt to append to files which increase in size instead of downloading the
+entire file.  This is useful in cases where a directory of log files which
+always increase in size is to be mirrored.
+.PP
+.TP
+.BI \-t\  <site>
+Mirror source files to remote directory.
+.PP
+.TP
+.B \-c
+Force source files to be from local directory.
+.PP
+.TP
+.BI \-g\  <pipe>
+Get source files by executing
+.IR <pipe> .
+Inside %-substitution is done on
+.IR <pipe> .
+.PP
+.SS Filtering Options
+Note:  Only one include filter and/or one exclude filter can be specified.
+The include filter is run first, and then the exclude filter.  Passing the
+null string to the
+.B \-i
+or
+.B \-x
+options removes the associated filter.
+
+.TP
+.BI \-i\  <regex>
+Include only files that match the extended regular expression
+.IR <regex> .
+.PP
+.TP
+.BI \-I\  <file>
+Include only files that match the extended regular expression contained in
+.IR <file> .
+Newlines in
+.I <file>
+are converted to
+.RB ` | '.
+.PP
+.TP
+.BI \-x\  <regex>
+Exclude any files that match the extended regular expression
+.IR <regex> .
+.PP
+.TP
+.BI \-X\  <file>
+Exclude any files that match the extended regular expression contained in
+.IR <file> .
+Newlines in
+.I <file>
+are converted to
+.RB ` | '.
+.PP
+.TP
+.B \-D
+Filter out directories.  Note that in order to handle automatic directory
+processing properly, mirrors that use
+.B \-f
+to read placeholder files that were generated with this option should also
+have this option in effect.
+.PP
+.TP
+.B \-s
+.I Don't
+filter out specials (device nodes, pipes, and sockets).  Normally
+they are filtered out.  Note that when mirroring device nodes and pipes
+are created, but sockets aren't.
+.PP
+.SS Timeout Options
+Note that all timeout options use the same base option,
+.BR -T .
+All timeout options can be specified with the same parameter string by
+concatenating desired timeouts.  Also, any timeout set to zero is disabled
+completely.
+.TP
+.BI \-T\ c <seconds>
+Initial connection and login timeout (default: 20)
+.PP
+.TP
+.BI \-T\ t <seconds\ per\ K>
+Timeout for file and directory transfers (default: 10)
+.PP
+.TP
+.BI \-T\ o <seconds>
+Timeout for simple commands (cd, pwd, etc.)
+.PP
+.TP
+.BI \-T\ q <seconds>
+Timeout for
+.I quit
+command and logout (default: 5)
+.PP
+.TP
+.BI \-T\ r <count>
+# of times to retry list and/or file retrievals before giving up (default: 10)
+.PP
+.TP
+.BI \-T\ d <seconds>
+Amount of time to wait between retries (default: 10)
+.PP
+.SH EXAMPLES
+.SS Command lines
+.nf
+# Look for new versions of X for Linux & mail report to me
+lurkftp -i Linux ftp.xfree86.org /pub/XFree86 -F .mailme
+
+# .mailme is a file containing: -R 'mail -s "lurkftp output" dark'
+
+# Mirror a single directory with reschedule;
+# at will mail me the report.
+atcron "2:00 tomorrow" lurkftp -m -d /net/ftp/rplay \\
+   ftp.sdsu.edu /pub/rplay
+
+# Mirror slackware disk set via sz into /usr/local/sw
+# Not recommended if no auto-download in local comm program
+lurkftp -d /usr/local/sw -l .sw.gz -e "ONAME=%l%f sz -" \\
+   ftp.cdrom.com /pub/linux/slackware/slakware -F .mailme
+
+# Do main lurking; see config files below
+lurkftp -F .chksites
+.fi
+.SS Contents of .chksites
+.nf
+# An extract from my command file
+# no multiple entries from same site, so simplify name
+-b .chkls.%s.gz
+-R 'mail -s "LurkFTP Output" dark' # mail reports to me
+-D # Don't care about changes in directories
+-U # ignore moves
+-P # fork away!
+-X .chkfilt.sunsite # special filter for sunsite
+sunsite.unc.edu /pub/Linux # fetch master list
+-N # .lsm stuff depends on sunsite
+# mail new .lsm's to me
+-i '.*\\.lsm$' -x /Incoming/ # include lsm's not in Incoming dir
+-f .chkls.%s.gz # Read remote site from previously generated listing
+#Note: the following file was primed so that old .lsms wouldn't
+#be sent.  This was done by *not* using -m.  It could've also
+# been primed by using the command:
+# zgrep .lsm .chkls.sunsite.gz | gzip >.chkls.lsms.gz
+-l .chkls.lsms.gz # Keep track of sent .lsm's in this file
+-m -e 'mail -s "lurkftp: %f" dark' # mirror through pipe
+sunsite.unc.edu /pub/Linux # same site/dir as above
+-i "" # reset include filter
++N # No more dependencies
+-X .chkfilt # filter for everyone else
+tsx-11.mit.edu /pub/linux/680x0 /pub/linux/packages/GCC
+ftp.kernel.org /pub/linux/kernel
+# etc.
+.fi
+.SS Contents of .chkfilt
+.nf
+INDEX.whole
+INDEX.short
+ls-lR
+/INDEX(|.html|.old)$
+00-find-ls(|.gz)$
+.fi
+.SS Contents of .chkfilt.sunsite
+.nf
+/README$
+/distributions/
+/!INDEX
+/archive-current/
+linux-announce.archive
+INDEX.whole
+INDEX.short
+ls-lR
+/INDEX(|.html|.old)$
+00-find-ls(|.gz)$
+.fi
+.SH SEE ALSO
+.IR regexec (3),
+.IR gzip (1),
+.IR ftp (1),
+.IR mail (1),
+.IR at (1),
+.IR mirror (1L).
+.SH BUGS
+.nf
+[+: may want to fix; *: definitely want to fix; \-: may never fix]
+
+* Doesn't handle non-UNIX remote sites [I know of none any more]
++ Some fixed-sized buffers may overflow
+\- Groups & user names aren't mirrored
+\- Sockets aren't mirrored
+- Exact time isn't used for comparison (only accurate to what ls gives)
+- All options in external program option group are obsolete
++ Few options are really range-checked
+* Probably plenty of nasty hidden bugs
+.fi
+.SH DIAGNOSTICS
+Failed transfers are marked in the report.  Specific errors are printed
+to stderr.  Debugging messages and some error messages are only printed
+when the debug level (as set by the
+.B -v
+option) is greater than 0.
+.SH AUTHOR
+Thomas J. Moore, dark@mama.indstate.edu

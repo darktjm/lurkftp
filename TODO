@@ -1,0 +1,27 @@
+Use ftp_endport() & check error for any file transfer
+Make ls continue if endport error
+Closely examine & fix problems with ftp.c
+add telnet negotiation to ftp.c
+Add protocol tweaking options (MODE/STRU/TYPE etc.)
+Add string-message to header fmt
+Move reported errors to new fmt
+Check login/connect state; disconnect if not logged in to same site
+Fix field limits in format strings
+Make generic mir_transfer (status: 1/3 in, 2/3 out)
+Add ls-lR file to dir src
+Add generic FTP commands (cmdpipe/header parsing)
+Make "text/binary" filter
+Add "Dirscan-include" filter
+allow nl in opt file for " & '
+Check documentation
+Maybe reimplement long help()
+Implement opt.html/opt.cgi or equivalent
+Auto-update link farm
+Allow glob-style wc's, either from wc.c or pat.c
+Make sure it still compiles w/ c89 (Solaris/AIX)
+--- ideas from mirror I might implement:
+Make "ignore" filter
+Make option to ignore dates &/or ignore size &/or look for "newer" files
+Add option for "skip mirror if too many changes"
+Add option for "Force transfer of everything"
+Add new list parsing routines (VMS/DOS/Mac) from lsparse.pl

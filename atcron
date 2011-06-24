@@ -1,0 +1,14 @@
+#!/bin/sh
+if [ "$1" = "-t" ]; then
+  shift; time="$1"; shift
+else
+  time="22:00 tomorrow"
+fi
+
+cmd=$1
+shift
+for x; do
+  cmd="$cmd \"$x\""
+done
+echo "$cmd
+atrun $cmd" | at $time

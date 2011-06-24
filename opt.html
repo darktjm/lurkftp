@@ -1,0 +1,343 @@
+<HEAD><TITLE>Lurkftp v1.0 Option file generator</TITLE>
+
+<SCRIPT LANGUAGE="JavaScript">
+<!-- Hide script from old browsers.
+var state = 0;
+
+var coms = "\<!--";
+coms = "\<NOSCRIPT\>";
+var come = "--\>";
+
+function reloadme(which)
+{
+  document.options.state.value = which;
+  document.options.ACTION.value = "CHST";
+  document.options.submit();
+}
+
+function chkstate(which)
+{
+  if(parseInt(document.options.state.value) != which)
+    document.writeln(coms);
+}
+
+function goRept()
+{
+  location.href = "rept.html";
+}
+
+function goTO()
+{
+  location.href = "to.html";
+}
+
+function goGlob()
+{
+  location.href = "glob.html";
+}
+// End Hide -->
+</SCRIPT>
+
+</HEAD>
+
+<BODY>
+
+<H1>Lurkftp v1.0 Option file generator</H1>
+
+<FORM NAME="options" ACTION="frm.html" TARGET=_self METHOD=GET>
+
+<INPUT TYPE="HIDDEN" NAME="state" VALUE="0">
+
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+chkstate(1);
+// -->
+</SCRIPT>
+
+<P>
+<TABLE>
+<CAPTION><H3>Global Options</H3></CAPTION>
+<TR><TH>Report Output Pipe</TH><TD><INPUT NAME=REPTPIPE></TD></TR>
+<TR><TH>Default Placeholder Name</TH><TD><INPUT NAME=BASEN></TD></TR>
+<TR><TH>Compress Command</TH><TD><INPUT NAME=COMPR></TD></TR>
+<TR><TH>Uncompress Command</TH><TD><INPUT NAME=UCOMPR></TD></TR>
+<TR><TH COLSPAN=2><INPUT TYPE=CHECKBOX NAME=BG>
+Fork & Dissociate From Terminal</TD></TR>
+</TABLE>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+document.write('\
+<INPUT TYPE=BUTTON VALUE="Back" onClick="reloadme(0)">\
+');
+//-->
+</SCRIPT>
+</P>
+
+</NOSCRIPT>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+chkstate(0);
+// -->
+</SCRIPT>
+
+<P>
+<TABLE>
+<CAPTION><H3>Site Options</H3></CAPTION>
+<TR><TH COLSPAN=2>Source Directory</TH>
+<TH COLSPAN=2>Destination Directory</TH></TR>
+<TR><TH>Dir type</TH><TD>
+<SELECT NAME=SDIR>
+ <OPTION SELECTED VALUE="f">FTP Site
+ <OPTION VALUE="d">Local Dir
+ <OPTION VALUE="p">Local Pipe
+ <OPTION VALUE="l">Local ls-lR File
+ <OPTION VALUE="L">Remote ls-lR File
+ <OPTION VALUE="m">Local Placeholder
+</SELECT>
+<TH>Dir type</TH><TD>
+<SELECT NAME=DDIR>
+ <OPTION VALUE="f">FTP Site
+ <OPTION VALUE="d">Local Dir
+ <OPTION VALUE="p">Local Pipe
+ <OPTION VALUE="l">Local ls-lR File
+ <OPTION VALUE="L">Remote ls-lR File
+ <OPTION SELECTED VALUE="m">Local Placeholder
+</SELECT>
+</TD></TR>
+</TD>
+<TR><TH>FTP Site</TH><TD><INPUT NAME="SSITE"></TD>
+<TH>FTP Site</TH><TD><INPUT NAME="DSITE"></TD></TR>
+<TR><TH>Directory</TH><TD>
+<INPUT NAME="SDIR">
+</TD>
+<TH>Directory</TH><TD>
+<INPUT NAME="DDIR">
+</TD></TR>
+<TR>
+<TD COLSPAN=2 ALIGN=CENTER>
+<INPUT TYPE=SUBMIT NAME=ACTION VALUE="Prev">
+<INPUT TYPE=SUBMIT NAME=ACTION VALUE="Del">
+<INPUT TYPE=SUBMIT NAME=ACTION VALUE="Add">
+<INPUT TYPE=SUBMIT NAME=ACTION VALUE="Next">
+</TD>
+<TD COLSPAN=2 ALIGN=CENTER>
+<INPUT TYPE=SUBMIT NAME=ACTION VALUE="Prev">
+<INPUT TYPE=SUBMIT NAME=ACTION VALUE="Del">
+<INPUT TYPE=SUBMIT NAME=ACTION VALUE="Add">
+<INPUT TYPE=SUBMIT NAME=ACTION VALUE="Next">
+</TD>
+</TR>
+<TR><TH>File/Pipe</TH><TD><INPUT NAME="SFILE"></TD>
+<TH>File/Pipe</TH><TD><INPUT NAME="DFILE"></TD></TR>
+<TR><TH COLSPAN=4><HR WIDTH="100%"></TH></TR>
+<TR><TH COLSPAN=4><INPUT TYPE=CHECKBOX NAME="FORK"> Fork
+<INPUT TYPE=CHECKBOX NAME="MOVE"> Detect Moved Files
+<INPUT TYPE=CHECKBOX NAME="RECURSE"> Force Manual List Recursion
+<INPUT TYPE=CHECKBOX NAME="MODES"> Detect (and Change) Modes
+</TH></TR>
+<TR><TH>Default Passwd</TH><TD><INPUT NAME="APW"></TD>
+<TH>Done Command</TH><TD><INPUT NAME="POSTCMD"></TD></TR>
+<TR><TH>Include Filter</TH><TD><INPUT NAME=IFILT></TD>
+<TD><INPUT TYPE=CHECKBOX NAME="IFFILE"> File</TD>
+<TH><INPUT TYPE=CHECKBOX NAME="XDIR"> Exclude Dirs</TH></TR>
+<TR><TH>Exclude Filter</TH><TD><INPUT NAME=XFILT></TD>
+<TD><INPUT TYPE=CHECKBOX NAME="XFFILE"> File</TD>
+<TH><INPUT TYPE=CHECKBOX NAME="XSPEC"> Exclude Specials</TH></TR>
+<TR>
+<TH>Mirror</TH><TD COLSPAN=3>
+<INPUT TYPE=CHECKBOX NAME="MIREN"> Enable
+<INPUT TYPE=CHECKBOX NAME="STAMP"> Just Update Date/Mode Stamp
+<INPUT TYPE=CHECKBOX NAME="APPEND"> Append (instead of reget) files that grow
+</TR>
+<TR><TH>Mirror Source</TH><TD><SELECT NAME="MIRSRC">
+ <OPTION VALUE="">None
+ <OPTION VALUE="f">FTP Site
+ <OPTION VALUE="d">Local Dir
+ <OPTION VALUE="p">Pipe
+</SELECT>
+</TD><TH>Mirror Dest</TH><TD><SELECT NAME="MIRDST">
+ <OPTION VALUE="">None
+ <OPTION VALUE="f">FTP Site
+ <OPTION VALUE="d">Local Dir
+ <OPTION VALUE="p">Pipe
+</SELECT>
+</TD></TR>
+<TR><TH>Pipe Command</TH><TD><INPUT NAME="SRCPIPE"></TD>
+<TH>Pipe Command</TH><TD><INPUT NAME="DSTPIPE"></TD>
+</TR>
+<TR><TH COLSPAN=4><HR WIDTH="100%"></TH></TR>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+document.write("\
+<TH><INPUT TYPE='BUTTON' VALUE='Report Options' onClick='reloadme(2)'></TH>\
+<TH><INPUT TYPE='BUTTON' VALUE='Timeout Options' onClick='reloadme(3)'></TH>\
+<TH></TH>\
+<TH><INPUT TYPE='BUTTON' VALUE='Global Options' onClick='reloadme(1)'></TH></TR>\
+");
+// -->
+</SCRIPT>
+<TR>
+<TH><INPUT TYPE=SUBMIT NAME="ACTION" VALUE="Prev"></TH>
+<TH><INPUT TYPE=SUBMIT NAME="ACTION" VALUE="Remove"></TH>
+<TH><INPUT TYPE=SUBMIT NAME="ACTION" VALUE="Add"></TH>
+<TH><INPUT TYPE=SUBMIT NAME="ACTION" VALUE="Next"></TH></TR>
+<TR><TH COLSPAN=4><HR WIDTH="100%"></TH></TR>
+</TABLE>
+</P>
+
+</NOSCRIPT>
+<SCRIPT>
+<!--
+chkstate(2);
+// -->
+</SCRIPT>
+
+<P>
+<TABLE>
+<CAPTION><H3>Report Options</H3></CAPTION>
+<TR><TH COLSPAN=2>Standard Report</TH>
+<TH ROWSPAN=6>Sort Order</TH><TD>
+<SELECT NAME=SDATE>
+ <OPTION SELECTED VALUE="1">1 Ascending
+ <OPTION VALUE="2">2 Ascending
+ <OPTION VALUE="3">3 Ascending
+ <OPTION VALUE="4">4 Ascending
+ <OPTION VALUE="5">5 Ascending
+ <OPTION VALUE="6">6 Ascending
+ <OPTION VALUE="-1">1 Descending
+ <OPTION VALUE="-2">2 Descending
+ <OPTION VALUE="-3">3 Descending
+ <OPTION VALUE="-4">4 Descending
+ <OPTION VALUE="-5">5 Descending
+ <OPTION VALUE="-6">6 Descending
+</SELECT>Date
+</TD></TR>
+<TR><TH>Header</TH><TD><INPUT NAME="HEAD"></TD>
+<TD>
+<SELECT NAME=SDIRN>
+ <OPTION VALUE="1">1 Ascending
+ <OPTION SELECTED VALUE="2">2 Ascending
+ <OPTION VALUE="3">3 Ascending
+ <OPTION VALUE="4">4 Ascending
+ <OPTION VALUE="5">5 Ascending
+ <OPTION VALUE="6">6 Ascending
+ <OPTION VALUE="-1">1 Descending
+ <OPTION VALUE="-2">2 Descending
+ <OPTION VALUE="-3">3 Descending
+ <OPTION VALUE="-4">4 Descending
+ <OPTION VALUE="-5">5 Descending
+ <OPTION VALUE="-6">6 Descending
+</SELECT>Dir Name
+</TD></TR>
+<TR><TH>Footer</TH><TD><INPUT NAME="FOOT"></TD>
+<TD>
+<SELECT NAME=SFILEN>
+ <OPTION VALUE="1">1 Ascending
+ <OPTION VALUE="2">2 Ascending
+ <OPTION SELECTED VALUE="3">3 Ascending
+ <OPTION VALUE="4">4 Ascending
+ <OPTION VALUE="5">5 Ascending
+ <OPTION VALUE="6">6 Ascending
+ <OPTION VALUE="-1">1 Descending
+ <OPTION VALUE="-2">2 Descending
+ <OPTION VALUE="-3">3 Descending
+ <OPTION VALUE="-4">4 Descending
+ <OPTION VALUE="-5">5 Descending
+ <OPTION VALUE="-6">6 Descending
+</SELECT>File Name
+</TD></TR>
+<TR><TH>Item</TH><TD><INPUT NAME="ITEM"></TD>
+<TD>
+<SELECT NAME=SLINKN>
+ <OPTION VALUE="1">1 Ascending
+ <OPTION VALUE="2">2 Ascending
+ <OPTION VALUE="3">3 Ascending
+ <OPTION SELECTED VALUE="4">4 Ascending
+ <OPTION VALUE="5">5 Ascending
+ <OPTION VALUE="6">6 Ascending
+ <OPTION VALUE="-1">1 Descending
+ <OPTION VALUE="-2">2 Descending
+ <OPTION VALUE="-3">3 Descending
+ <OPTION VALUE="-4">4 Descending
+ <OPTION VALUE="-5">5 Descending
+ <OPTION VALUE="-6">6 Descending
+</SELECT>Link Name
+</TD></TR>
+<TR><TH COLSPAN=2>Mirror Report</TH>
+<TD>
+<SELECT NAME=SMODE>
+ <OPTION VALUE="1">1 Ascending
+ <OPTION VALUE="2">2 Ascending
+ <OPTION VALUE="3">3 Ascending
+ <OPTION VALUE="4">4 Ascending
+ <OPTION SELECTED VALUE="5">5 Ascending
+ <OPTION VALUE="6">6 Ascending
+ <OPTION VALUE="-1">1 Descending
+ <OPTION VALUE="-2">2 Descending
+ <OPTION VALUE="-3">3 Descending
+ <OPTION VALUE="-4">4 Descending
+ <OPTION VALUE="-5">5 Descending
+ <OPTION VALUE="-6">6 Descending
+</SELECT>Mode (&amp File Type)
+</TD></TR>
+<TR><TH>Header</TH><TD><INPUT NAME="MHEAD"></TD>
+<TD>
+<SELECT NAME=SSIZE>
+ <OPTION VALUE="1">1 Ascending
+ <OPTION VALUE="2">2 Ascending
+ <OPTION VALUE="3">3 Ascending
+ <OPTION VALUE="4">4 Ascending
+ <OPTION VALUE="5">5 Ascending
+ <OPTION SELECTED VALUE="6">6 Ascending
+ <OPTION VALUE="-1">1 Descending
+ <OPTION VALUE="-2">2 Descending
+ <OPTION VALUE="-3">3 Descending
+ <OPTION VALUE="-4">4 Descending
+ <OPTION VALUE="-5">5 Descending
+ <OPTION VALUE="-6">6 Descending
+</SELECT>Size</TD></TR>
+</TD></TR>
+<TR><TH>Footer</TH><TD><INPUT NAME="MFOOT"></TD></TR>
+<TR><TH>Item</TH><TD><INPUT NAME="MITEM"></TD>
+<TH>Suppress</TH><TD><INPUT TYPE=RADIO VALUE="y" NAME=QUIET> Yes
+<INPUT TYPE=RADIO CHECKED VALUE="n" NAME=QUIET> No</TD></TR>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+document.write('\
+<TR><TD><INPUT TYPE=BUTTON VALUE="Back" onClick="reloadme(0)"></TD></TR>\
+');
+//-->
+</SCRIPT>
+</TABLE>
+</P>
+
+
+</NOSCRIPT>
+<SCRIPT>
+<!--
+chkstate(3);
+// -->
+</SCRIPT>
+
+<P>
+<TABLE>
+<CAPTION><H3>Timeout Options</H3></CAPTION>
+<TR><TH>Connection/Simple Command</TH><TD><INPUT NAME=CONNTO> Sec</TD></TR>
+<TR><TH>Transfer Rate</TH><TD><INPUT NAME=TRATE> Sec/K</TD></TR>
+<TR><TH>Quit/Logoff</TH><TD><INPUT NAME=QTO> Sec</TD></TR>
+<TR><TH>Retry Count</TH><TD><INPUT NAME=RETRIES> Times</TD></TR>
+<TR><TH>Retry Delay</TH><TD><INPUT NAME=RETRTO> Sec</TD></TR>
+<SCRIPT LANGUAGE="JavaScript">
+<!--
+document.write('\
+<TR><TD><INPUT TYPE=BUTTON VALUE="Back" onClick="reloadme(0)"></TD></TR>\
+');
+//-->
+</SCRIPT>
+</TABLE>
+</P>
+
+
+<!-- another
+-->
+</BODY>

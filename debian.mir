@@ -1,0 +1,6 @@
+-b .chkls.%s.gz
+-R 'mail -s "debian mirror" dark'
+-i "dists/(slink|slink-proposed-updates)/"
+-x "/(binary-|disks-|)(m68k|arm|powerpc|hurd|sparc)"
+#-d debian ftp.debian.org /pub/debian/dists
+-d debian-nonus -o L:non-us.debian.org:/debian-non-US/ls-lR.gz non-us.debian.org /debian-non-US/dists
